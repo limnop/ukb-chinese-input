@@ -33,6 +33,7 @@ import juloo.keyboard2.dict.DictionarySwitcher;
 import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
 import juloo.keyboard2.suggestions.Suggestions;
+import juloo.keyboard2.staged.Composer;
 
 public class Keyboard2 extends InputMethodService
   implements SharedPreferences.OnSharedPreferenceChangeListener
@@ -486,7 +487,7 @@ public class Keyboard2 extends InputMethodService
     }
 
     @Override
-    public String candidate_at_digit(int digit)
+    public Composer.Candidate candidate_at_digit(int digit)
     {
       return (_candidates_view == null)
           ? null : _candidates_view.candidate_at_digit(digit);

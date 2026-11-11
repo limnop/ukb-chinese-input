@@ -412,10 +412,9 @@ public final class KeyEventHandler
              the user sees after paging. Past the end of the page the key is
              swallowed: a digit in pinyin is meaningless and would otherwise
              end the composition. */
-          String word = _recv.candidate_at_digit(digit);
+          Composer.Candidate word = _recv.candidate_at_digit(digit);
           if (word != null)
-            suggestion_entered(word);
-        }
+            suggestion_entered(word);        }
         else
           send_text(String.valueOf(key.getChar()));
         break;
@@ -465,18 +464,35 @@ public final class KeyEventHandler
   @Override
   public void suggestion_entered(String text)
   {
+    suggestion_entered(new Composer.Candidate(text));
+  }
+
+  /** Enter a candidate of the composition. A candidate that answers only the
+      beginning of the pinyin ("你" for "nihao") leaves the rest of the letters
+      composed, so a long word is typed part by part; the row then shows the
+      candidates of what is left. */
+  public void suggestion_entered(Composer.Candidate candidate)
+  {
     /* A candidate of the composition replaces it in place. */
     if (has_composition())
     {
       InputConnection conn = _recv.getCurrentInputConnection();
-      _composer.reset();
-      _suggestions.composition_candidates(
-          Collections.<Composer.Candidate>emptyList());
+      String rest = _composer.accept(candidate);
       last_replaced_word = null;
       last_replacement_word_len = 0;
       if (conn != null)
+        conn.commitText(candidate.text, 1);
+      if (rest.length() > 0)
       {
-        conn.commitText(text, 1);
+        /* Letters are left: keep them on the keyboard with their candidates
+           instead of ending the composition. */
+        send_composition();
+        return;
+      }
+      _suggestions.composition_candidates(
+          Collections.<Composer.Candidate>emptyList());
+      if (conn != null)
+      {
         /* The candidate is the word in the editor now: read it back and query
            the dictionary, so that the row shows its suggestions right away. */
         _typedword.refresh_current_word();
@@ -485,9 +501,9 @@ public final class KeyEventHandler
     }
     String old = _typedword.get();
     int cur_rel = _typedword.cursor_relative();
-    replace_surrounding_text(old.length() + cur_rel, -cur_rel, text);
+    replace_surrounding_text(old.length() + cur_rel, -cur_rel, candidate.text);
     last_replaced_word = old;
-    last_replacement_word_len = text.length();
+    last_replacement_word_len = candidate.text.length();
     _next_last_action = LastAction.SUGGESTION_ENTERED;
   }
 
@@ -947,7 +963,7 @@ public final class KeyEventHandler
       List<Composer.Candidate> candidates = _composer.candidates();
       if (candidates.size() > 0)
       {
-        suggestion_entered(candidates.get(0).text);
+        suggestion_entered(candidates.get(0));
         return;
       }
       finish_composition();
@@ -986,7 +1002,7 @@ public final class KeyEventHandler
     /** Page the candidate row: -1 toward the first candidates, +1 later. */
     public void page_candidates(int dir);
     /** Word at [digit] on the candidate page currently shown, or [null]. */
-    public String candidate_at_digit(int digit);
+    public Composer.Candidate candidate_at_digit(int digit);
     public void set_shift_state(boolean state, boolean lock);
     public void set_compose_pending(boolean pending);
     public void selection_state_changed(boolean selection_is_ongoing);

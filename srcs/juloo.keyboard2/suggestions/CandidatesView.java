@@ -328,7 +328,7 @@ public class CandidatesView extends LinearLayout
             public void onClick(View _v)
             {
               VibratorCompat.vibrate(_v, Config.globalConfig());
-              Config.globalConfig().handler.suggestion_entered(candidate.text);
+              Config.globalConfig().handler.suggestion_entered(candidate);
             }
           });
       _row.addView(cell);
@@ -363,13 +363,13 @@ public class CandidatesView extends LinearLayout
     return Math.min(per_page(), Math.max(0, _candidates.size() - _page_start));
   }
 
-  /** Text of the [digit]th candidate on the page that is actually shown, or
-      [null] past its end. The digit keys ask the row itself, so the index
-      can never drift from what the user sees after paging. */
-  public String candidate_at_digit(int digit)
+  /** Candidate at [digit] on the page that is actually shown, or [null] past
+      its end. The digit keys ask the row itself, so the index can never drift
+      from what the user sees after paging. */
+  public Composer.Candidate candidate_at_digit(int digit)
   {
     int i = _page_start + digit;
-    return (i >= 0 && i < _candidates.size()) ? _candidates.get(i).text : null;
+    return (i >= 0 && i < _candidates.size()) ? _candidates.get(i) : null;
   }
 
   /** Rebuild the row for the current page, back at the left edge. Only the
@@ -666,8 +666,8 @@ public class CandidatesView extends LinearLayout
         cell.setLayoutParams(new AbsListView.LayoutParams(
               ViewGroup.LayoutParams.MATCH_PARENT, cell_h));
       }
-      final String text = _candidates.get(i).text;
-      cell.setText(text);
+      final Composer.Candidate candidate = _candidates.get(i);
+      cell.setText(candidate.text);
       if (_candidate_size > 0)
         cell.setTextSize(TypedValue.COMPLEX_UNIT_PX, _candidate_size);
       cell.setOnClickListener(new View.OnClickListener()
@@ -676,7 +676,7 @@ public class CandidatesView extends LinearLayout
             public void onClick(View _v)
             {
               VibratorCompat.vibrate(_v, Config.globalConfig());
-              Config.globalConfig().handler.suggestion_entered(text);
+              Config.globalConfig().handler.suggestion_entered(candidate);
             }
           });
       return cell;

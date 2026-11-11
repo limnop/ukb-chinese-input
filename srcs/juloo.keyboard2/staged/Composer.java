@@ -32,17 +32,30 @@ public interface Composer
     /** A short string shown above [text] by the keyboard, or [null]. This is
         the tone of a Chinese syllable, the reading of a Japanese word, etc. */
     public final String annotation;
+    /** How much of the composition this candidate answers, in characters of
+        the composition. [0] means all of it.
 
-    public Candidate(String text, String annotation)
+        A composition can be longer than one word: "nihao" is 你 + 好, and
+        accepting 你 leaves "hao" to be composed. Such a candidate carries the
+        number of letters it covers so that the rest is kept. */
+    public final int consumed;
+
+    public Candidate(String text, String annotation, int consumed)
     {
       this.text = text;
       this.annotation = annotation;
+      this.consumed = consumed;
+    }
+
+    public Candidate(String text, String annotation)
+    {
+      this(text, annotation, 0);
     }
 
     /** A candidate that has no annotation. */
     public Candidate(String text)
     {
-      this(text, null);
+      this(text, null, 0);
     }
   }
 
@@ -83,6 +96,19 @@ public interface Composer
 
   /** Forget the composition without committing it. */
   public void reset();
+
+  /** Take [c] as entered: forget the part of the composition it answers and
+      keep the rest composed. Returns the letters still being composed, empty
+      when the candidate settles the whole composition.
+
+      Composing a long pinyin word by parts goes through here: accepting 你
+      while "nihao" is composed leaves "hao", whose candidates are then
+      offered as usual. */
+  public default String accept(Candidate c)
+  {
+    reset();
+    return "";
+  }
 
   /** A composer that never composes anything, used for scripts that are typed
       one key at a time. */
