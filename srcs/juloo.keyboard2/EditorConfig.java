@@ -36,9 +36,17 @@ public final class EditorConfig
   public int initial_sel_start;
   public int initial_sel_end;
 
-  /** Suggestions. */
-  // Doesn't override [_config.suggestions_enabled].
+  /** Suggestions. Whether the editor accepts suggestions at all. This does not
+      drive the visibility of the candidates row, which stays available in
+      editors that ask for no suggestions (QQ, terminals): the row is where a
+      Chinese layout shows its letters, caret and candidates. It only avoids
+      querying the dictionaries on the keyboard's behalf. Doesn't override
+      [_config.suggestions_enabled]. */
   public boolean should_show_candidates_view;
+  /** The editor hides what is typed in it (password fields). The candidates
+      row is hidden there: it would show the very characters that must not be
+      read from the screen. */
+  public boolean password_editor = false;
 
   public EditorConfig() {}
 
@@ -49,6 +57,7 @@ public final class EditorConfig
     /* Selection mode.
        Editors with [TYPE_NULL] are for example Termux and Emacs. */
     selection_mode_enabled = inputType != InputType.TYPE_NULL;
+    password_editor = _is_password(info.inputType);
     enter_key_replacement = null;
     /* Action key. Looks at [info.actionLabel] first. */
     if (info.actionLabel != null)
@@ -119,6 +128,23 @@ public final class EditorConfig
       default: return null;
     }
     return res.getString(id);
+  }
+
+  /** Whether the field is masked. Same test as [CandidatesView.should_show()],
+      which decides whether the editor wants suggestions. */
+  static boolean _is_password(int inputType)
+  {
+    if ((inputType & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT)
+      return false;
+    switch (inputType & InputType.TYPE_MASK_VARIATION)
+    {
+      case InputType.TYPE_TEXT_VARIATION_PASSWORD:
+      case InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD:
+      case InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD:
+        return true;
+      default:
+        return false;
+    }
   }
 
   boolean _should_move_cursor_force_fallback(EditorInfo info)

@@ -8,6 +8,8 @@
 .DS_Store
 /captures
 /build
+# Built APKs kept outside the history: rebuild instead
+/apks
 # Directory _build is not used anymore
 /_build
 /release

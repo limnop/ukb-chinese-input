@@ -8,6 +8,7 @@ import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.Config;
 import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
+import juloo.keyboard2.KeyboardData;
 import juloo.keyboard2.staged.Composer;
 
 /** Keep track of the word being typed and provide suggestions for
@@ -22,6 +23,12 @@ public final class Suggestions
       are not bounded, this can be longer than [MAX_COUNT]. */
   public List<Composer.Candidate> candidates = Collections.emptyList();
   public String emoji_suggestion = null;
+  /** The letters currently being composed, e.g. "nihao". Filled in by
+      [Keyboard2] right before the row is refreshed, so it always matches the
+      composer and never lingers after the word is committed. */
+  public String composing = "";
+  /** Caret inside [composing], drawn as a bar in that line. */
+  public int composing_cursor = 0;
   /** Number of suggestions the dictionary offers. */
   public static final int MAX_COUNT = 3;
 
@@ -33,6 +40,9 @@ public final class Suggestions
 
   public void started()
   {
+    /* Only gates the dictionary lookup, not the row: a Chinese layout keeps the
+       row in editors that ask for no suggestions (QQ, terminals) and fills it
+       from its own word list. */
     _enabled = _config.editor_config.should_show_candidates_view;
     clear();
   }
@@ -41,11 +51,33 @@ public final class Suggestions
   {
     if (!_enabled)
       return;
-    if (word.length() < 2 || _config.current_dictionary == null)
+    /* On a Chinese layout the pinyin composer and its bundled word list own
+       the row. The cdict lookup is for latin words; querying it with the raw
+       pinyin letters (or with nothing) only offers the first entries of the
+       Chinese dictionary while the user is typing. */
+    if (chinese_layout())
+      clear();
+    else if (word.length() < 2 || _config.current_dictionary == null)
       clear();
     else
       query_suggestions(word);
     _callback.set_suggestions(this);
+  }
+
+  /** Whether the layout in front of the user composes Chinese. Read from the
+      layout, the same way the candidates view decides which mode mark to
+      show, so the two never disagree. */
+  boolean chinese_layout()
+  {
+    if (_config == null || _config.layouts == null)
+      return false;
+    int i = _config.get_current_layout();
+    if (i < 0 || i >= _config.layouts.size())
+      return false;
+    KeyboardData layout = _config.layouts.get(i);
+    if (layout == null)
+      return false;
+    return "pinyin".equals(layout.script) || "zhuyin".equals(layout.script);
   }
 
   void clear()

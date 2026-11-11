@@ -1,11 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <!-- The latin letters being composed, above the candidates row on a
+       Chinese layout. Gone whenever there is no composition, so the input
+       view keeps its height in every other case. -->
+  <style name="candidates_composing">
+    <item name="android:layout_width">match_parent</item>
+    <item name="android:layout_height">wrap_content</item>
+    <item name="android:minHeight">15dp</item>
+    <item name="android:gravity">start|center_vertical</item>
+    <item name="android:paddingStart">6dp</item>
+    <item name="android:paddingEnd">6dp</item>
+    <item name="android:textColor">?attr/colorLabel</item>
+    <item name="android:textSize">13sp</item>
+    <item name="android:maxLines">1</item>
+    <item name="android:background">?attr/colorKeyboard</item>
+  </style>
   <!-- Candidates view -->
   <style name="candidates_view">
     <item name="android:layout_width">match_parent</item>
     <item name="android:layout_height">wrap_content</item>
     <item name="android:orientation">horizontal</item>
-    <item name="android:gravity">end|center_vertical</item>
+    <item name="android:gravity">start|center_vertical</item>
     <item name="android:paddingEnd">@dimen/candidates_gap</item>
   </style>
   <style name="candidates_scroll">
@@ -61,6 +76,28 @@
     <item name="android:maxLines">2</item>
     <item name="android:textColor">?attr/colorSubLabel</item>
     <item name="android:background">?android:attr/selectableItemBackground</item>
+  </style>
+  <style name="candidates_icon_button">
+    <item name="android:layout_width">@dimen/candidates_btn_width</item>
+    <item name="android:layout_height">@dimen/candidates_btn_width</item>
+    <item name="android:layout_weight">0</item>
+    <item name="android:layout_gravity">center_vertical</item>
+    <item name="android:scaleType">fitCenter</item>
+    <item name="android:padding">@dimen/candidates_suggestions_padding</item>
+    <item name="android:background">?android:attr/selectableItemBackground</item>
+  </style>
+  <style name="candidates_mode">
+    <item name="android:layout_width">wrap_content</item>
+    <item name="android:layout_height">wrap_content</item>
+    <item name="android:layout_weight">0</item>
+    <item name="android:layout_gravity">top|start</item>
+    <item name="android:gravity">start|top</item>
+    <item name="android:minWidth">0dp</item>
+    <item name="android:layout_marginStart">1dp</item>
+    <item name="android:layout_marginTop">1dp</item>
+    <item name="android:textColor">?attr/colorSubLabel</item>
+    <item name="android:alpha">0.55</item>
+    <item name="android:maxLines">1</item>
   </style>
   <style name="candidates_status">
     <item name="android:layout_width">match_parent</item>

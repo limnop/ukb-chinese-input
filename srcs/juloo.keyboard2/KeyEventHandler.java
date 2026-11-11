@@ -44,6 +44,13 @@ public final class KeyEventHandler
       than one key per character, such as Hangul, Kana and Chinese. It is
       selected by the `script` attribute of the current layout. */
   Composer _composer = Composer.NONE;
+  /** Chinese composers keep their letters in the candidates row instead of
+      writing them into the editor as composing text. */
+  boolean _composing_on_keyboard = false;
+  /** A gesture started on an arrow key while a Chinese composition is live.
+      A long swipe can be reinterpreted by Pointers as a neighbouring key;
+      that stray key must be swallowed rather than committing the pinyin. */
+  boolean _nav_gesture = false;
 
   public KeyEventHandler(IReceiver recv, Suggestions sg)
   {
@@ -76,10 +83,15 @@ public final class KeyEventHandler
   public void set_layout_script(String script)
   {
     Composer composer = composer_of(script);
-    if (composer.getClass() == _composer.getClass())
-      return;
-    finish_composition();
-    _composer = composer;
+    /* Finish the old composition before switching the flag, so leaving a
+       Chinese layout cannot commit its pinyin into the editor. */
+    if (composer.getClass() != _composer.getClass())
+    {
+      finish_composition();
+      _composer = composer;
+    }
+    _composing_on_keyboard =
+      "pinyin".equals(script) || "zhuyin".equals(script);
   }
 
   /** Return the composer of the given layout script. Scripts that are typed
@@ -102,19 +114,133 @@ public final class KeyEventHandler
     return _composer.text().length() > 0;
   }
 
+  /** The letters of the live composition, shown above the candidates row on
+      Chinese layouts. Reading it from the composer keeps it correct even
+      after the word has been committed or the composition was abandoned. */
+  public String composing_text()
+  {
+    return _composer.text();
+  }
+
+  /** Caret inside the pinyin, drawn by the composing line of the candidates
+      view. */
+  public int composing_cursor()
+  {
+    return _composer.cursor();
+  }
+
+  /** Left/right arrow keys belong to the pinyin caret while a Chinese
+      composition is live; up/down page through the candidates. Selection
+      sliders keep their normal meaning. */
+  boolean composition_cursor_slider(KeyValue.Slider s)
+  {
+    return _composing_on_keyboard && has_composition()
+        && _composer instanceof Pinyin
+        && (s == KeyValue.Slider.Cursor_left
+            || s == KeyValue.Slider.Cursor_right);
+  }
+
+  /** Any key whose only job is moving a caret. A layout may express the left
+      and right arrows as a slider or as a DPAD key event; either way they
+      must never end a Chinese composition. */
+  static boolean is_caret_key(KeyValue key)
+  {
+    switch (key.getKind())
+    {
+      case Slider:
+        KeyValue.Slider s = key.getSlider();
+        return s == KeyValue.Slider.Cursor_left
+            || s == KeyValue.Slider.Cursor_right;
+      case Keyevent:
+        int code = key.getKeyevent();
+        return code == KeyEvent.KEYCODE_DPAD_LEFT
+            || code == KeyEvent.KEYCODE_DPAD_RIGHT;
+      default:
+        return false;
+    }
+  }
+
+  /** The two shapes the return key takes on the keyboard: a raw ENTER key
+      event, or the editor's action key (Done / Go / Search) that replaces it
+      in most text fields. Both commit a Chinese composition and neither may
+      also be sent to the editor while the composition is live. */
+  static boolean is_enter_key(KeyValue key)
+  {
+    switch (key.getKind())
+    {
+      case Keyevent:
+        return key.getKeyevent() == KeyEvent.KEYCODE_ENTER;
+      case Event:
+        return key.getEvent() == KeyValue.Event.ACTION;
+      default:
+        return false;
+    }
+  }
+
+  /** Up/down arrows page through the candidate row while a Chinese
+      composition is live. */
+  boolean composition_page_slider(KeyValue.Slider s)
+  {
+    return _composing_on_keyboard && has_composition()
+        && (s == KeyValue.Slider.Cursor_up
+            || s == KeyValue.Slider.Cursor_down);
+  }
+
+  /** Up/down arrows, expressed either as sliders or as DPAD key events.
+      These page through the candidate row. */
+  static boolean is_paging_key(KeyValue key)
+  {
+    switch (key.getKind())
+    {
+      case Slider:
+        return key.getSlider() == KeyValue.Slider.Cursor_up
+            || key.getSlider() == KeyValue.Slider.Cursor_down;
+      case Keyevent:
+        int code = key.getKeyevent();
+        return code == KeyEvent.KEYCODE_DPAD_UP
+            || code == KeyEvent.KEYCODE_DPAD_DOWN;
+      default:
+        return false;
+    }
+  }
+
+  /** The four arrows belong to the keyboard during a Chinese composition:
+      left/right move the pinyin caret, up/down page the candidates, and
+      none of them may end the composition. */
+  static boolean is_navigation_key(KeyValue key)
+  {
+    return is_caret_key(key) || is_paging_key(key);
+  }
+
+  /** Position of the candidate selected by a digit, or -1. '0' selects the
+      tenth candidate, the same way '1' selects the first. */
+  static int candidate_index_of_digit(char c)
+  {
+    if (c >= '1' && c <= '9')
+      return c - '1';
+    if (c == '0')
+      return 9;
+    return -1;
+  }
+
   /** Write the composition to the editor as composing text, so that it can be
-      replaced by the next key. The composing text is not committed: the editor
-      shows it as being edited. */
+      replaced by the next key. Chinese compositions are the exception: their
+      letters live in the candidates row, so the editor is left untouched and
+      only the word the user picks is ever committed. */
   void send_composition()
   {
-    InputConnection conn = _recv.getCurrentInputConnection();
-    if (conn == null)
-      return;
     String text = _composer.text();
-    if (text.length() == 0)
-      conn.commitText("", 1);
-    else
-      conn.setComposingText(text, 1);
+    if (!_composing_on_keyboard)
+    {
+      InputConnection conn = _recv.getCurrentInputConnection();
+      if (conn != null)
+      {
+        if (text.length() == 0)
+          conn.commitText("", 1);
+        else
+          conn.setComposingText(text, 1);
+      }
+    }
     List<Composer.Candidate> candidates = _composer.candidates();
     /* Keep the dictionary suggestions when the composer has none: the row
        belongs to the dictionary then. The word composed so far is used, not
@@ -134,6 +260,22 @@ public final class KeyEventHandler
       return;
     List<Composer.Candidate> candidates = _composer.candidates();
     _composer.reset();
+    if (_composing_on_keyboard)
+    {
+      /* Ending a pinyin composition puts the raw letters into the editor:
+         pressing Enter writes "nihao" as plain text. Silently dropping the
+         composition lost whatever the user had typed. */
+      _suggestions.composition_candidates(
+          Collections.<Composer.Candidate>emptyList());
+      InputConnection conn = _recv.getCurrentInputConnection();
+      if (conn != null)
+      {
+        _autocap.typed(text);
+        conn.commitText(text, 1);
+        _typedword.refresh_current_word();
+      }
+      return;
+    }
     /* Only give the row back when the composer had taken it: for Hangul it
        belongs to the dictionary between compositions as well. */
     if (candidates.size() > 0)
@@ -166,6 +308,13 @@ public final class KeyEventHandler
   {
     if (key == null)
       return;
+    /* Only the genuine start of a gesture ([isSwipe] false) resets the flag.
+       Pointers calls onPointerDown(k, true) again when a long swipe is
+       reinterpreted as a neighbouring key; that must not drop the
+       protection, otherwise the stray key ends the composition. */
+    if (!isSwipe)
+      _nav_gesture = _composing_on_keyboard && has_composition()
+          && is_navigation_key(key);
     // Stop auto capitalisation when pressing some keys
     switch (key.getKind())
     {
@@ -201,7 +350,30 @@ public final class KeyEventHandler
     Pointers.Modifiers old_mods = _mods;
     update_meta_state(mods);
     /* Keys that are not part of a composition commit it. The keys that type
-       text or that are consumed by the composer are handled below. */
+       text or that are consumed by the composer are handled below. Cursor
+       keys are the exception: they only move the caret inside the pinyin, so
+       letting them end the composition would throw the typed letters away. */
+    boolean keep_for_nav = _composing_on_keyboard
+        && has_composition() && is_navigation_key(key);
+    /* The return key commits the raw letters (see finish_composition below)
+       and is then swallowed. Sending it as well would insert a newline or run
+       a command in the editor in the middle of typing Chinese. This is
+       computed before the composition is finished, which empties the
+       composer. */
+    boolean swallow_enter = _composing_on_keyboard
+        && has_composition() && is_enter_key(key);
+    /* A long swipe on an arrow key can be reinterpreted by Pointers as a
+       neighbouring key (a letter, a digit, a layout switch). Swallow that
+       stray key: the caret has reached the edge of the pinyin and waits
+       there, it must not commit the letters. */
+    boolean nav_gesture = _nav_gesture && _composing_on_keyboard
+        && has_composition();
+    if (nav_gesture && !is_navigation_key(key))
+    {
+      update_meta_state(old_mods);
+      _last_action = _next_last_action;
+      return;
+    }
     switch (key.getKind())
     {
       case Char:
@@ -214,17 +386,65 @@ public final class KeyEventHandler
           case SPACE_BAR:
           case BACKSPACE:
             break;
-          default: finish_composition(); break;
+          default:
+            if (!keep_for_nav)
+              finish_composition();
+            break;
         }
         break;
-      default: finish_composition(); break;
+      case Slider:
+        if (!keep_for_nav)
+          finish_composition();
+        break;
+      default:
+        if (!keep_for_nav)
+          finish_composition();
+        break;
     }
     switch (key.getKind())
     {
-      case Char: send_text(String.valueOf(key.getChar())); break;
+      case Char:
+        int digit = candidate_index_of_digit(key.getChar());
+        if (_composing_on_keyboard && has_composition() && digit >= 0)
+        {
+          /* Digits pick a candidate by its position on the page currently
+             shown. Ask the row itself so the index can never drift from what
+             the user sees after paging. Past the end of the page the key is
+             swallowed: a digit in pinyin is meaningless and would otherwise
+             end the composition. */
+          String word = _recv.candidate_at_digit(digit);
+          if (word != null)
+            suggestion_entered(word);
+        }
+        else
+          send_text(String.valueOf(key.getChar()));
+        break;
       case String: send_text(key.getString()); break;
-      case Event: _recv.handle_event_key(key.getEvent()); break;
-      case Keyevent: send_key_down_up(key.getKeyevent()); break;
+      case Event:
+        if (!swallow_enter)
+          _recv.handle_event_key(key.getEvent());
+        break;
+      case Keyevent:
+        /* The letters are already on screen: don't also send the return key. */
+        if (swallow_enter)
+          break;
+        /* A layout that uses DPAD key events for its arrows either moves the
+           pinyin caret or pages the candidates, never the editor. */
+        if (keep_for_nav)
+        {
+          if (is_paging_key(key))
+            _recv.page_candidates(
+                key.getKeyevent() == KeyEvent.KEYCODE_DPAD_UP ? -1 : 1);
+          else
+          {
+            int d = (key.getKeyevent() == KeyEvent.KEYCODE_DPAD_LEFT) ? -1 : 1;
+            if (_composer.move_cursor(d))
+              send_composition();
+          }
+        }
+        else
+          send_key_down_up(key.getKeyevent());
+        break;
       case Modifier: break;
       case Editing: handle_editing_key(key.getEditing()); break;
       case Compose_pending: _recv.set_compose_pending(true); break;
@@ -470,6 +690,35 @@ public final class KeyEventHandler
   /** [r] might be negative, in which case the direction is reversed. */
   void handle_slider(KeyValue.Slider s, int r, boolean key_down)
   {
+    if (composition_cursor_slider(s))
+    {
+      /* A tap sends one key_down and one key_up, while a continuous slide
+         sends its repeats through key_up (onPointerHold) and no final key_up
+         at all. Moving only on key_up therefore gives one step per tap and
+         one step per slide increment without ever doubling. */
+      if (!key_down)
+      {
+        int step = (r == 0) ? 1 : r;
+        int d = (s == KeyValue.Slider.Cursor_left) ? -step : step;
+        if (_composer.move_cursor(d))
+          send_composition();
+      }
+      return;
+    }
+    if (composition_page_slider(s))
+    {
+      /* Same one-event-per-step rule as the caret: key_down is the start of
+         the slide, only key_up (and the repeats) actually page. [r] carries
+         the direction of a slide and is positive for a tap, exactly as in
+         the caret case above, so combine it with the slider itself. */
+      if (!key_down)
+      {
+        int step = (r == 0) ? 1 : r;
+        int d = (s == KeyValue.Slider.Cursor_up) ? -step : step;
+        _recv.page_candidates(d < 0 ? -1 : 1);
+      }
+      return;
+    }
     switch (s)
     {
       case Cursor_left: move_cursor(-r); break;
@@ -734,6 +983,10 @@ public final class KeyEventHandler
   public static interface IReceiver extends Suggestions.Callback
   {
     public void handle_event_key(KeyValue.Event ev);
+    /** Page the candidate row: -1 toward the first candidates, +1 later. */
+    public void page_candidates(int dir);
+    /** Word at [digit] on the candidate page currently shown, or [null]. */
+    public String candidate_at_digit(int digit);
     public void set_shift_state(boolean state, boolean lock);
     public void set_compose_pending(boolean pending);
     public void selection_state_changed(boolean selection_is_ongoing);
