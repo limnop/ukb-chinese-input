@@ -281,4 +281,77 @@ public class PinyinTest
     assertEquals("你", texts("Ni").get(0));
     assertEquals("nihao", typed("Nihao").text());
   }
+
+  @Test
+  public void an_apostrophe_splits_the_syllables()
+  {
+    // "xian" is one syllable, "xi'an" is two: the separator overrules the
+    // automatic reading. The built-in table has no word list, so the two parts
+    // are offered as the candidates of each part.
+    assertTrue(texts("xian").contains("先"));
+    List<String> split = texts("xi'an");
+    assertTrue(split.toString(), split.contains("西"));
+    assertTrue(split.toString(), split.contains("安"));
+    // 先 is a candidate of "xian" as a whole, it must not come back here.
+    assertFalse(split.toString(), split.contains("先"));
+  }
+
+  @Test
+  public void the_separator_is_not_part_of_the_pinyin()
+  {
+    Pinyin pinyin = typed("xi'an");
+    // Shown above the candidates and committed as raw text without the '.
+    assertEquals("xian", pinyin.text());
+    assertEquals(4, pinyin.cursor());
+    // Backspace removes the "n", the separator before it stays until the "a"
+    // before it is removed too: the split it marks is still the one typed.
+    assertTrue(pinyin.backspace());
+    assertEquals("xia", pinyin.text());
+    assertTrue(pinyin.backspace());
+    assertEquals("xi", pinyin.text());
+    assertTrue(pinyin.backspace());
+    assertEquals("x", pinyin.text());
+    // A separator at the start or repeated says nothing, the letters stay.
+    assertEquals("a", typed("'a").text());
+    assertEquals("an", typed("'an").text());
+    assertEquals("an", typed("a''n").text());
+  }
+
+  @Test
+  public void a_separator_where_the_reading_is_already_sure_is_ignored()
+  {
+    // "ni|hao" can only split this way, an apostrophe there says nothing.
+    assertEquals("nihao", typed("ni'hao").text());
+    // Behind an "n" or an "r" no syllable goes on, the split is implied.
+    assertEquals("mena", typed("men'a").text());
+    assertEquals("pingerqi", typed("ping'erqi").text());
+    assertEquals("们啊", texts("men'a").get(0));
+  }
+
+  @Test
+  public void a_part_of_a_split_composition_can_be_taken_alone()
+  {
+    Pinyin pinyin = typed("xi'an");
+    Composer.Candidate xi = null;
+    for (Composer.Candidate c : pinyin.candidates())
+      if (c.text.equals("西") && c.consumed > 0)
+        xi = c;
+    assertNotNull(xi);
+    assertEquals(2, xi.consumed);
+    // The separator goes with the part it ended.
+    assertEquals("an", pinyin.accept(xi));
+    assertEquals("安", pinyin.candidates().get(0).text);
+  }
+
+  @Test
+  public void the_last_part_of_a_split_comes_first()
+  {
+    // The characters of "xi" are picked after seeing where the split leads:
+    // the part that completes the composition is offered first.
+    List<String> ts = texts("xi'an");
+    assertTrue(ts.toString(), ts.indexOf("安") < ts.indexOf("西"));
+    // Both parts stay offerable, "西" is how the composition is taken apart.
+    assertTrue(ts.toString(), ts.contains("西"));
+    assertTrue(ts.toString(), ts.contains("安"));
+  }
 }
