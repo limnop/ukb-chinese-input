@@ -133,12 +133,15 @@ public class PinyinTest
   }
 
   @Test
-  public void nothing_is_offered_while_typing()
+  public void prefixes_keep_offering_candidates()
   {
-    // "n" is a syllable of its own (嗯) but "nih" is not a sequence of complete
-    // syllables.
-    assertEquals(1, candidates("n").size());
-    assertEquals(0, candidates("nih").size());
+    // "n" is a syllable of its own (嗯) and also the beginning of ni, na,
+    // nian, ... ; "nih" reads as ni followed by an unfinished h*. Candidates
+    // are offered throughout instead of only once a syllable is complete.
+    assertTrue(candidates("n").size() > 1);
+    assertTrue(texts("n").contains("你"));
+    assertTrue(candidates("nih").size() > 0);
+    // No syllable starts with "xyz", so there is nothing to offer.
     assertEquals(0, candidates("xyz").size());
     assertEquals(0, candidates("").size());
   }
@@ -176,6 +179,39 @@ public class PinyinTest
     pinyin.reset();
     assertEquals("", pinyin.text());
     assertFalse(pinyin.backspace());
+  }
+
+  @Test
+  public void caret_edits_the_middle_of_the_pinyin()
+  {
+    Pinyin pinyin = typed("nihao");
+    assertEquals(5, pinyin.cursor());
+    assertTrue(pinyin.move_cursor(-3)); // ni|hao
+    assertEquals(2, pinyin.cursor());
+    assertTrue(pinyin.backspace());     // delete the 'i' before the caret
+    assertEquals("nhao", pinyin.text());
+    assertTrue(pinyin.type("i"));       // insert at the caret
+    assertEquals("nihao", pinyin.text());
+    assertEquals(2, pinyin.cursor());
+    // Candidates still come from the whole string, not from the caret side.
+    assertTrue(texts(pinyin.candidates()).contains("你好"));
+  }
+
+  @Test
+  public void caret_stays_within_the_string()
+  {
+    Pinyin pinyin = typed("ni");
+    assertFalse(pinyin.move_cursor(5)); // already clamped at the end
+    assertEquals(2, pinyin.cursor());
+    assertTrue(pinyin.move_cursor(-5)); // clamped at the start
+    assertEquals(0, pinyin.cursor());
+    assertFalse(pinyin.backspace());    // nothing before the caret
+    assertEquals("ni", pinyin.text());
+    assertTrue(pinyin.type("h"));       // inserting at the front
+    assertEquals("hni", pinyin.text());
+    assertEquals(1, pinyin.cursor());
+    pinyin.reset();
+    assertEquals(0, pinyin.cursor());
   }
 
   @Test

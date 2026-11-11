@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -94,6 +95,23 @@ public final class Dictionaries
     outp.write(data);
     outp.close();
     set_installed(dict_name);
+  }
+
+  /** Install the Chinese dictionary bundled with the APK, once. The upstream
+      download URL for `zh` does not exist, so shipping it is the only way to
+      get word suggestions after a composition has been committed. */
+  public void install_bundled_zh()
+  {
+    if (_installed_dictionaries.contains("zh"))
+      return;
+    try
+    {
+      InputStream inp = _context.getAssets().open("zh.dict");
+      byte[] data = Utils.read_all_bytes(inp);
+      inp.close();
+      install("zh", data);
+    }
+    catch (IOException e) { /* no bundled dictionary: carry on without it */ }
   }
 
   /** Return the absolute path used to store the dictionary with the given
