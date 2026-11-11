@@ -6,10 +6,10 @@
   <dimen name="emoji_text_size">28dp</dimen>
   <dimen name="clipboard_view_height">300dp</dimen>
   <dimen name="pref_button_size">28dp</dimen>
-  <dimen name="candidates_gap">8dp</dimen>
-  <dimen name="candidates_min_width">72dp</dimen>
-  <dimen name="candidates_suggestions_padding">4dp</dimen>
-  <dimen name="candidates_margin_vertical">8dp</dimen>
+  <dimen name="candidates_gap">3dp</dimen>
+  <dimen name="candidates_min_width">42dp</dimen>
+  <dimen name="candidates_suggestions_padding">1dp</dimen>
+  <dimen name="candidates_margin_vertical">4dp</dimen>
   <dimen name="candidates_emoji_width">40dp</dimen>
   <dimen name="candidates_btn_width">25dp</dimen>
   <dimen name="dictionary_download_item_width">40dp</dimen>

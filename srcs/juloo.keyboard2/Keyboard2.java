@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import juloo.cdict.Cdict;
+import juloo.keyboard2.dict.ChineseWordDictionary;
 import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.dict.DictionariesActivity;
 import juloo.keyboard2.dict.DictionarySwitcher;
@@ -143,6 +144,8 @@ public class Keyboard2 extends InputMethodService
     _handler = new Handler(getMainLooper());
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
+    _dictionaries.install_bundled_zh();
+    ChineseWordDictionary.preload(this);
     Config.initGlobalConfig(prefs, getResources(),
         _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
@@ -200,10 +203,24 @@ public class Keyboard2 extends InputMethodService
     _config.should_show_dictionary_switch =
       (_config.device_locales.installed.size() > 0);
     String dict_name = _dictionaries.get_selected(_config);
+    /* Chinese layouts use the bundled zh dictionary regardless of the device
+       locale: the locale default would pick an English word list. */
+    if (dict_name == null && is_chinese_layout())
+      dict_name = "zh";
     if (dict_name == null)
       dict_name = (_config.device_locales.default_ != null) ?
         _config.device_locales.default_.dictionary : null;
     _dictionaries.set_current_dictionary(_config, dict_name);
+  }
+
+  boolean is_chinese_layout()
+  {
+    int i = _config.get_current_layout();
+    if (i < 0 || i >= _config.layouts.size())
+      return false;
+    KeyboardData layout = _config.layouts.get(i);
+    return layout != null &&
+      ("pinyin".equals(layout.script) || "zhuyin".equals(layout.script));
   }
 
   /** Remember and apply the dictionary chosen by the user for the current
@@ -215,18 +232,34 @@ public class Keyboard2 extends InputMethodService
     refresh_candidates_view();
   }
 
+  /** The candidates row is not hidden on its own anymore. It is where a Chinese
+      layout draws the pinyin letters, the caret and the candidates, so apps that
+      ask for no suggestions (QQ, terminals, editors with [NO_SUGGESTIONS])
+      would otherwise lose all of Chinese input. Only two cases keep it away:
+      editors that mask what is typed (password fields) and numeric editors,
+      which never compose text. Split layouts use the space differently. */
   private void refresh_candidates_view()
   {
     boolean should_show =
       _config.suggestions_enabled
-      && _config.editor_config.should_show_candidates_view
-      && !_config.split_layout;
+      && !_config.split_layout
+      && !_config.editor_config.password_editor
+      && !_config.editor_config.numeric_layout;
     if (should_show)
     {
       _candidates_view.refresh_config(_config);
       _keyeventhandler.dictionary_changed();
     }
     _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
+    if (!should_show)
+    {
+      /* The composing line is a sibling of the candidates row, so hiding the
+         row must hide the line too (password fields, split layouts...). */
+      View composing =
+        _keyboard_container_view.findViewById(R.id.candidates_composing);
+      if (composing != null)
+        composing.setVisibility(View.GONE);
+    }
   }
 
   /** Might re-create the keyboard view. [_keyboard_layout_view.setKeyboard()] and
@@ -445,6 +478,20 @@ public class Keyboard2 extends InputMethodService
   public class Receiver implements KeyEventHandler.IReceiver,
          KeyValue.Stateful.Symbol_provider, DictionarySwitcher.Callback
   {
+    @Override
+    public void page_candidates(int dir)
+    {
+      if (_candidates_view != null)
+        _candidates_view.page_candidates(dir);
+    }
+
+    @Override
+    public String candidate_at_digit(int digit)
+    {
+      return (_candidates_view == null)
+          ? null : _candidates_view.candidate_at_digit(digit);
+    }
+
     public void handle_event_key(KeyValue.Event ev)
     {
       switch (ev)
@@ -568,6 +615,8 @@ public class Keyboard2 extends InputMethodService
 
     public void set_suggestions(Suggestions suggestions)
     {
+      suggestions.composing = _keyeventhandler.composing_text();
+      suggestions.composing_cursor = _keyeventhandler.composing_cursor();
       _candidates_view.set_candidates(suggestions);
     }
 

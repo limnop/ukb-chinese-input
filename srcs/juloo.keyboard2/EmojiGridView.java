@@ -4,9 +4,10 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.AttributeSet;
 import android.view.ContextThemeWrapper;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.TextView;
@@ -19,7 +20,6 @@ import java.util.List;
 import java.util.Set;
 
 public class EmojiGridView extends GridView
-  implements GridView.OnItemClickListener
 {
   public static final int GROUP_LAST_USE = -1;
 
@@ -27,6 +27,21 @@ public class EmojiGridView extends GridView
 
   private List<Emoji> _emojiArray;
   private HashMap<Emoji, Integer> _lastUsed;
+
+  /** Tap detection. [GridView] throws away a tap while its adapter data has
+      changed but no layout has run yet: [AbsListView.onTouchEvent] only enters
+      [TOUCH_MODE_DOWN] under `if (!mDataChanged)`. That is exactly the state
+      left by [setAdapter], which is what opening the emoji pane does, so the
+      first tap after entering the pane is ignored and keys start working only
+      after a scroll forces a layout. The tap is recognised here instead, which
+      does not depend on that internal state. [super.onTouchEvent] still gets
+      every event, so scrolling, flinging and the pressed feedback are
+      unchanged. */
+  private int _tap_slop;
+  private float _down_x;
+  private float _down_y;
+  private int _down_position = INVALID_POSITION;
+  private boolean _tap_pending = false;
 
   /*
    ** TODO: adapt column width and emoji size
@@ -36,7 +51,7 @@ public class EmojiGridView extends GridView
   {
     super(context, attrs);
     Emoji.init(context.getResources());
-    setOnItemClickListener(this);
+    _tap_slop = ViewConfiguration.get(context).getScaledTouchSlop();
     loadLastUsed();
     setEmojiGroup((_lastUsed.size() == 0) ? 0 : GROUP_LAST_USE);
   }
@@ -45,14 +60,76 @@ public class EmojiGridView extends GridView
   {
     _emojiArray = (group == GROUP_LAST_USE) ? getLastEmojis() : Emoji.getEmojisByGroup(group);
     setAdapter(new EmojiViewAdpater(getContext(), _emojiArray));
+    cancel_tap();
   }
 
-  public void onItemClick(AdapterView<?> parent, View v, int pos, long id)
+  @Override
+  public boolean onTouchEvent(MotionEvent ev)
   {
+    switch (ev.getActionMasked())
+    {
+      case MotionEvent.ACTION_DOWN:
+        _down_x = ev.getX();
+        _down_y = ev.getY();
+        _down_position = position_at(_down_x, _down_y);
+        _tap_pending = _down_position != INVALID_POSITION;
+        break;
+      case MotionEvent.ACTION_MOVE:
+        if (_tap_pending
+            && (Math.abs(ev.getX() - _down_x) > _tap_slop
+                || Math.abs(ev.getY() - _down_y) > _tap_slop))
+          _tap_pending = false;
+        break;
+      case MotionEvent.ACTION_UP:
+        /* A long press has no meaning on an emoji: skip it rather than
+           inserting on the release of a press-and-hold. */
+        if (_tap_pending
+            && ev.getEventTime() - ev.getDownTime()
+               < ViewConfiguration.getLongPressTimeout())
+          select(_down_position);
+        cancel_tap();
+        break;
+      case MotionEvent.ACTION_CANCEL:
+        cancel_tap();
+        break;
+    }
+    super.onTouchEvent(ev);
+    return true;
+  }
+
+  private void cancel_tap()
+  {
+    _tap_pending = false;
+    _down_position = INVALID_POSITION;
+  }
+
+  /** Position under a local coordinate, [INVALID_POSITION] when there is no
+      cell there. [pointToPosition] covers the normal case; the fallback walks
+      the visible cells in case the grid has not indexed them yet. */
+  private int position_at(float x, float y)
+  {
+    int pos = pointToPosition((int)x, (int)y);
+    if (pos != INVALID_POSITION)
+      return pos;
+    for (int i = 0; i < getChildCount(); i++)
+    {
+      View child = getChildAt(i);
+      if (x >= child.getLeft() && x < child.getRight()
+          && y >= child.getTop() && y < child.getBottom())
+        return getFirstVisiblePosition() + i;
+    }
+    return INVALID_POSITION;
+  }
+
+  private void select(int pos)
+  {
+    if (_emojiArray == null || pos < 0 || pos >= _emojiArray.size())
+      return;
+    Emoji emoji = _emojiArray.get(pos);
     Config config = Config.globalConfig();
-    Integer used = _lastUsed.get(_emojiArray.get(pos));
-    _lastUsed.put(_emojiArray.get(pos), (used == null) ? 1 : used.intValue() + 1);
-    config.handler.key_up(_emojiArray.get(pos).kv(), Pointers.Modifiers.EMPTY);
+    Integer used = _lastUsed.get(emoji);
+    _lastUsed.put(emoji, (used == null) ? 1 : used.intValue() + 1);
+    config.handler.key_up(emoji.kv(), Pointers.Modifiers.EMPTY);
     saveLastUsed(); // TODO: opti
   }
 

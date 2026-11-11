@@ -62,6 +62,14 @@ android {
         storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
         keyAlias = System.getenv("RELEASE_KEY_ALIAS")
         keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+      } else if (file("release.keystore").exists()) {
+        // Local self-signed key. *.keystore is ignored by git, and having a
+        // fallback here means a plain `./gradlew assembleRelease` produces an
+        // installable, reproducibly signed APK instead of an unsigned one.
+        storeFile = file("release.keystore")
+        storePassword = "ukb-release"
+        keyAlias = "release"
+        keyPassword = "ukb-release"
       }
     }
   }

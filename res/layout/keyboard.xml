@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:hardwareAccelerated="false" android:orientation="vertical" android:background="?attr/colorKeyboard">
+  <TextView android:id="@+id/candidates_composing" style="@style/candidates_composing" android:visibility="gone"/>
   <juloo.keyboard2.suggestions.CandidatesView android:id="@+id/candidates_view" style="@style/candidates_view">
-    <TextView android:id="@+id/rubytext_toggle" style="@style/candidates_rubytext" android:contentDescription="@string/candidates_rubytext_toggle"/>
+    <TextView android:id="@+id/candidates_mode" style="@style/candidates_mode" android:text="中" android:contentDescription="中文输入"/>
     <juloo.keyboard2.suggestions.CandidatesScrollView android:id="@+id/candidates_scroll" style="@style/candidates_scroll">
       <LinearLayout android:id="@+id/candidates_row" style="@style/candidates_row"/>
     </juloo.keyboard2.suggestions.CandidatesScrollView>
-    <TextView android:id="@+id/candidates_lang_name" style="@style/candidates_lang_name"/>
-    <Button android:id="@+id/dictionary_switch" style="@style/change_dictionary"/>
+    <ImageView android:id="@+id/candidates_expand" style="@style/candidates_icon_button" android:src="@drawable/ic_candidates_expand" android:contentDescription="展开候选字表"/>
   </juloo.keyboard2.suggestions.CandidatesView>
+  <GridView android:id="@+id/candidates_grid"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:numColumns="auto_fit"
+      android:columnWidth="38dp"
+      android:stretchMode="columnWidth"
+      android:horizontalSpacing="1dp"
+      android:verticalSpacing="1dp"
+      android:gravity="center"
+      android:visibility="gone"
+      android:scrollbars="vertical"
+      android:background="?attr/colorKeyboard"/>
   <juloo.keyboard2.Keyboard2View android:id="@+id/keyboard_view" android:layout_width="match_parent" android:layout_height="wrap_content"/>
 </LinearLayout>

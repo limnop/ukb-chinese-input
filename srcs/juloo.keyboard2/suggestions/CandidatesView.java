@@ -1,6 +1,7 @@
 package juloo.keyboard2.suggestions;
 
 import android.content.Context;
+import android.graphics.Typeface;
 import android.os.Build.VERSION;
 import android.text.InputType;
 import android.text.SpannableString;
@@ -8,24 +9,28 @@ import android.text.Spanned;
 import android.text.TextPaint;
 import android.text.style.CharacterStyle;
 import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
 import android.util.AttributeSet;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.inputmethod.EditorInfo;
+import android.widget.AbsListView;
+import android.widget.BaseAdapter;
+import android.widget.GridView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import juloo.keyboard2.Config;
-import juloo.keyboard2.KeyValue;
 import juloo.keyboard2.KeyboardData;
-import juloo.keyboard2.Pointers;
 import juloo.keyboard2.R;
-import juloo.keyboard2.dict.SupportedDictionaries;
+import juloo.keyboard2.VibratorCompat;
 import juloo.keyboard2.staged.Composer;
 
 public class CandidatesView extends LinearLayout
@@ -39,8 +44,12 @@ public class CandidatesView extends LinearLayout
   /** The candidates to show. The emoji suggestion, when there is one, is the
       last entry and has no annotation. */
   List<Composer.Candidate> _candidates = Collections.emptyList();
-  /** Number of entries of [_candidates] that have a cell. */
+  /** Number of entries of the current page that have a cell. */
   int _shown = 0;
+  /** Index in [_candidates] of the first entry of the current page. The
+      up/down arrows move it; the digit keys select relative to it, so '1'
+      always picks the leftmost word that is actually on screen. */
+  int _page_start = 0;
 
   /** The width available to the row, or 0 before the first layout. */
   int _width = 0;
@@ -48,23 +57,26 @@ public class CandidatesView extends LinearLayout
   CandidatesScrollView _scroll;
   LinearLayout _row;
 
-  /** Message when no dictionary is installed. Visible when no candidates are
-      shown. Might be [null]. */
-  View _status_no_dict = null;
-
-  View _dictionary_switch_button;
-  boolean should_show_dictionary_switch = false;
-
-  TextView _lang_name_view;
-
-  /** The control that shows and toggles the reading of the candidates. Hidden
-      for a language whose candidates carry no reading. */
-  TextView _rubytext_toggle;
+  /** Toggle between the one-row strip and a grid of every candidate. The grid
+      and the keyboard are siblings in [R.layout.keyboard], looked up lazily. */
+  ImageView _expand_button;
+  /** Small permanent mark, shown only on Chinese layouts. */
+  TextView _mode_indicator;
+  /** The latin letters being composed, a sibling of this view in the keyboard
+      layout. */
+  TextView _composing_view;
+  GridView _grid;
+  View _keyboard_view;
+  GridAdapter _grid_adapter;
+  boolean _expanded = false;
 
   /** Label size of a candidate and of its annotation, or 0 before
       [set_sizes]. */
   float _text_size = 0;
   float _annotation_size = 0;
+  /** Fixed, larger size of a candidate's text. Auto-sizing used to shrink a
+      long word until it was unreadable. */
+  float _candidate_size = 0;
 
   public CandidatesView(Context context, AttributeSet attrs)
   {
@@ -78,21 +90,14 @@ public class CandidatesView extends LinearLayout
     _scroll = (CandidatesScrollView)findViewById(R.id.candidates_scroll);
     _row = (LinearLayout)findViewById(R.id.candidates_row);
     _scroll.set_on_scroll(this);
-    setup_dictionary_switch_button();
-    _lang_name_view = (TextView)findViewById(R.id.candidates_lang_name);
-    _rubytext_toggle = (TextView)findViewById(R.id.rubytext_toggle);
-    _rubytext_toggle.setOnClickListener(new View.OnClickListener()
+    _mode_indicator = (TextView)findViewById(R.id.candidates_mode);
+    _expand_button = (ImageView)findViewById(R.id.candidates_expand);
+    _expand_button.setOnClickListener(new View.OnClickListener()
         {
           @Override
           public void onClick(View _v)
           {
-            Config c = Config.globalConfig();
-            c.set_annotations(!c.annotations());
-            /* Redraw in place: [Keyboard2] ignores this preference, so nothing
-               reloads, and the row keeps its candidates while the readings
-               appear or disappear. */
-            update_rubytext_toggle();
-            redraw_annotations();
+            toggle_expanded();
           }
         });
   }
@@ -108,14 +113,13 @@ public class CandidatesView extends LinearLayout
     }
   }
 
-  /** Spread the candidates across the row: every cell takes an equal share of
-      the width, never narrower than [candidates_min_width]. Past that the cells
-      keep their minimum width and the row is scrolled instead. Enough cells are
-      added for the row to reach the end of the screen, since the others are
-      only reachable by scrolling. */
+  /** Lay out the visible part of the row. Cells share the width equally,
+      never narrower than [candidates_min_width], except that a cell holding a
+      long word grows to fit it and the row is scrolled instead. Only the cells
+      needed to fill the screen are built; [on_scroll] adds the rest. */
   void layout_cells()
   {
-    int n = _candidates.size();
+    int n = page_size();
     if (n == 0 || _width == 0)
       return;
     int avail = _width - getPaddingEnd();
@@ -125,19 +129,28 @@ public class CandidatesView extends LinearLayout
        candidate: a list longer than the row would otherwise take the minimum
        width for every cell and leave the row short of its end. */
     int slot = Math.max(min, avail / Math.min(n, Math.max(1, avail / min)));
-    /* Every candidate keeps a cell; the ones past the end of the row are
-       reached by scrolling. */
-    int needed = n;
-    if (needed > _shown)
-      add_cells(needed - _shown);
+    /* Only build the cells that can be seen; [on_scroll] adds the rest when
+       the row nears its end. Prefix candidates can number in the hundreds and
+       inflating all of them on every keystroke made typing stall. */
+    int visible = Math.min(n, Math.max(_shown, Math.max(1, avail / min) + 1));
+    if (visible > _shown)
+      add_cells(visible - _shown);
     int width = Math.max(0, slot - gap);
     for (int i = 0; i < _row.getChildCount(); i++)
     {
       View cell = _row.getChildAt(i);
+      /* A word or phrase longer than one character must not be squeezed into
+         the shared slot: give that cell the width its text needs and let the
+         row scroll instead. */
+      int w = width;
+      TextView text = (TextView)cell.findViewById(R.id.candidate_text);
+      if (_candidate_size > 0 && text != null)
+        w = Math.max(w, (int)(text.getText().length() * _candidate_size * 1.1f)
+            + 2 * gap);
       ViewGroup.LayoutParams lp = cell.getLayoutParams();
-      if (lp.width != width)
+      if (lp.width != w)
       {
-        lp.width = width;
+        lp.width = w;
         cell.setLayoutParams(lp);
       }
     }
@@ -150,19 +163,16 @@ public class CandidatesView extends LinearLayout
     if (s.emoji_suggestion != null)
       cs.add(new Composer.Candidate(s.emoji_suggestion));
     _candidates = cs;
+    _page_start = 0;
     _row.removeAllViews();
     _shown = 0;
     add_cells(CELLS_PER_PAGE);
     layout_cells();
     _scroll.scrollTo(0, 0);
-    // Hide the status message when showing candidates.
-    if (cs.size() != 0 && _status_no_dict != null)
-      _status_no_dict.setVisibility(View.GONE);
-    int dict_vis =
-      (should_show_dictionary_switch && cs.size() == 0) ? View.VISIBLE : View.GONE;
-    _dictionary_switch_button.setVisibility(dict_vis);
-    _lang_name_view.setVisibility(dict_vis);
-    update_rubytext_toggle();
+    if (_expanded)
+      refresh_grid();
+    set_composing(s.composing, s.composing_cursor);
+    update_controls();
   }
 
   /** The one character the control shows and the reading that goes above it, in
@@ -284,101 +294,40 @@ public class CandidatesView extends LinearLayout
     return s;
   }
 
-  /** Draw the rubytext control in the state of the preference. Shown for a
-      language that annotates its candidates, from the moment the keyboard is
-      up rather than as the candidates come and go. */
-  void update_rubytext_toggle()
-  {
-    String[] exemplar = rubytext_exemplar();
-    if (exemplar == null)
-    {
-      _rubytext_toggle.setVisibility(View.GONE);
-      return;
-    }
-    _rubytext_toggle.setVisibility(View.VISIBLE);
-    String text = exemplar[0];
-    String reading = exemplar[1];
-    if (Config.globalConfig().annotations() && reading.length() > 0)
-    {
-      /* One string, the reading small above the character. A Chinese tone mark
-         gets a little more room than a kana reading would, and is drawn in a
-         heavier stroke: it is a single thin letter, not a word. */
-      boolean chinese = is_chinese();
-      SpannableString s = new SpannableString(reading + "\n" + text);
-      s.setSpan(new RelativeSizeSpan(chinese ? 0.6f : 0.5f), 0,
-          reading.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-      if (chinese)
-        s.setSpan(new HeavierMark(chinese ? MARK_SCALE : 1f), 0, reading.length(),
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-      _rubytext_toggle.setText(s);
-    }
-    else
-      _rubytext_toggle.setText(text);
-  }
-
   /** Whether the annotation of a candidate cell is drawn. When the readings
       are on, the line is kept even for a candidate that has no reading so
       that the cells stay aligned; when they are off, the line goes so that
       the row does not keep a blank one. */
   int annotation_visibility()
   {
-    return Config.globalConfig().annotations() ? View.VISIBLE : View.GONE;
-  }
-
-  /** Show or hide the readings of the cells that are already drawn. The cells
-      are not re-created: rebuilding them would blank the row for a frame, and
-      the toggle has to show the same candidates in the other state. Their text
-      is unchanged, only the annotation line goes or comes back. */
-  void redraw_annotations()
-  {
-    int vis = annotation_visibility();
-    for (int i = 0; i < _row.getChildCount(); i++)
-    {
-      TextView annotation =
-        (TextView)_row.getChildAt(i).findViewById(R.id.candidate_annotation);
-      if (annotation != null)
-        annotation.setVisibility(vis);
-    }
-    _row.requestLayout();
+    /* Text-only candidates: the annotation line is always gone. */
+    return View.GONE;
   }
 
   /** Add up to [count] more candidate cells. */
   void add_cells(int count)
   {
-    int end = Math.min(_shown + count, _candidates.size());
+    int end = Math.min(_shown + count, page_size());
     if (end <= _shown)
       return;
     LayoutInflater inflater = LayoutInflater.from(getContext());
     while (_shown < end)
     {
-      final Composer.Candidate candidate = _candidates.get(_shown);
+      final Composer.Candidate candidate = _candidates.get(_page_start + _shown);
       View cell = inflater.inflate(R.layout.candidates_item, _row, false);
       TextView text = (TextView)cell.findViewById(R.id.candidate_text);
-      TextView annotation = (TextView)cell.findViewById(R.id.candidate_annotation);
       text.setText(candidate.text);
-      /* The annotation always keeps its line, even when there is none: the
-         cells are centred on their own height, so a cell that hides the line
-         would draw its text at a different height than its neighbours. */
-      annotation.setText(shown_annotation(candidate.annotation));
-        /* The Chinese mark is a spacing modifier letter: its ink sits at the top
-           of the line box, so the descent is wasted space that grows the cell past
-           the bar and clips the text. Trim it for Chinese only, and put the trim
-           back on every bind because the cells are recycled - kana fills its line
-           and would be clipped by the same trim. */
-        boolean chinese_mark = is_chinese();
-        annotation.setIncludeFontPadding(!chinese_mark);
-        android.view.ViewGroup.LayoutParams alp = annotation.getLayoutParams();
-        alp.height = chinese_mark ? (int)(_annotation_size * 1.5f)
-                                  : android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
-        annotation.setLayoutParams(alp);
-      annotation.setVisibility(annotation_visibility());
-      set_text_size(text, _text_size, true);
-      set_text_size(annotation, _annotation_size, false);
+      /* Annotations are never drawn, so their content is not built at all:
+         no SpannableString, no per-cell layout parameters. */
+      cell.findViewById(R.id.candidate_annotation).setVisibility(View.GONE);
+      /* One fixed size, no auto-sizing: a long word must not shrink. */
+      set_text_size(text, _candidate_size, false);
       cell.setOnClickListener(new View.OnClickListener()
           {
             @Override
             public void onClick(View _v)
             {
+              VibratorCompat.vibrate(_v, Config.globalConfig());
               Config.globalConfig().handler.suggestion_entered(candidate.text);
             }
           });
@@ -391,7 +340,7 @@ public class CandidatesView extends LinearLayout
   @Override
   public void on_scroll(int scrollX, int scrollY)
   {
-    if (_shown < _candidates.size()
+    if (_shown < page_size()
         && scrollX + _scroll.getWidth() + _scroll.getWidth() / 2
            >= _row.getWidth())
     {
@@ -400,34 +349,74 @@ public class CandidatesView extends LinearLayout
     }
   }
 
+  /** How many candidates fit on one page. Independent of the current page,
+      so paging always advances by the same number of words. */
+  int per_page()
+  {
+    int min = getResources().getDimensionPixelSize(R.dimen.candidates_min_width);
+    return Math.max(CELLS_PER_PAGE, _width / Math.max(1, min));
+  }
+
+  /** Number of candidates on the current page. */
+  int page_size()
+  {
+    return Math.min(per_page(), Math.max(0, _candidates.size() - _page_start));
+  }
+
+  /** Text of the [digit]th candidate on the page that is actually shown, or
+      [null] past its end. The digit keys ask the row itself, so the index
+      can never drift from what the user sees after paging. */
+  public String candidate_at_digit(int digit)
+  {
+    int i = _page_start + digit;
+    return (i >= 0 && i < _candidates.size()) ? _candidates.get(i).text : null;
+  }
+
+  /** Rebuild the row for the current page, back at the left edge. Only the
+      cells of one page exist at a time. */
+  void rebuild_page()
+  {
+    _row.removeAllViews();
+    _shown = 0;
+    add_cells(page_size());
+    layout_cells();
+    if (_scroll != null)
+      _scroll.scrollTo(0, 0);
+    update_controls();
+  }
+
+  /** Page through the candidates with the up/down arrows. [dir] is -1 toward
+      the first candidates and +1 toward the later ones. At either end the
+      row simply stays where it is. */
+  public boolean page_candidates(int dir)
+  {
+    if (_candidates.isEmpty() || _scroll == null)
+      return false;
+    int next = _page_start + dir * per_page();
+    if (next < 0 || next >= _candidates.size())
+      return false;
+    _page_start = next;
+    rebuild_page();
+    return true;
+  }
+
   void clear_candidates()
   {
     _candidates = Collections.emptyList();
+    _page_start = 0;
     _shown = 0;
     _row.removeAllViews();
-    /* The control follows the language, not the row: an empty row does not
-       take the switch away while the keyboard is up. */
-    if (_rubytext_toggle != null)
-      update_rubytext_toggle();
+    if (_expanded)
+      refresh_grid();
+    set_composing("", 0);
+    update_controls();
   }
 
   public void refresh_config(Config config)
   {
+    collapse();
     clear_candidates();
-    // The status message indicates whether the dictionaries should be
-    // installed.
-    if (config.current_dictionary == null)
-      inflate_status_no_dict(config);
-    else if (_status_no_dict != null)
-      _status_no_dict.setVisibility(View.GONE);
-    should_show_dictionary_switch = config.should_show_dictionary_switch;
     set_sizes(config);
-    SupportedDictionaries sd = SupportedDictionaries.get(getResources());
-    if (config.current_dictionary_name == null)
-      _lang_name_view.setText(R.string.dictionary_switcher_title);
-    else
-      _lang_name_view.setText(
-          sd.get_display_name(config.current_dictionary_name));
   }
 
   /** Set the height of the suggestion row and the text size. */
@@ -436,24 +425,24 @@ public class CandidatesView extends LinearLayout
     // Make the candidates view about as high as a keyboard row.
     float row_height = config.keyboard_rows_height_pixels * (1 - config.key_vertical_margin);
     ViewGroup.MarginLayoutParams p =
-      (ViewGroup.MarginLayoutParams)getLayoutParams();
-    p.height = (int)row_height;
+        (ViewGroup.MarginLayoutParams)getLayoutParams();
+    /* Shorter than a keyboard row. The label sizes below are still derived
+       from the full row height: shrinking the bar must not shrink the
+       candidates with it. */
+    p.height = (int)(row_height * 0.72f);
     setLayoutParams(p);
     // Match the size of labels on the keyboard.
     _text_size = row_height * config.characterSize * config.labelTextSize;
     _annotation_size = _text_size * 0.4f;
-    if (_rubytext_toggle != null)
-      /* The control is one key wide and shows two lines, the reading above the
-         character: a character at the full label size does not leave room for
-         the reading line inside the control's box. */
-      set_text_size(_rubytext_toggle, _annotation_size, false);
+    /* Candidates are what the user reads: larger than the key labels, and
+       fixed. Auto-sizing used to shrink a long word until it was unreadable. */
+    _candidate_size = _text_size * 1.15f;
+    update_mode_indicator();
     for (int i = 0; i < _row.getChildCount(); i++)
     {
       View cell = _row.getChildAt(i);
       set_text_size((TextView)cell.findViewById(R.id.candidate_text),
-          _text_size, true);
-      set_text_size((TextView)cell.findViewById(R.id.candidate_annotation),
-          _annotation_size, false);
+          _candidate_size, false);
     }
   }
 
@@ -470,37 +459,228 @@ public class CandidatesView extends LinearLayout
           (int)(size / 2.), (int)size, 1, TypedValue.COMPLEX_UNIT_PX);
   }
 
-  void inflate_status_no_dict(Config config)
+  /* The strip deliberately has no dictionary-install hint, language name or
+     language-switch button: without a dictionary those three occupied the
+     entire bar. Only the candidates and the expand control are shown. */
+
+  /** The grid and the keyboard are siblings in [R.layout.keyboard]. They are
+      looked up lazily: [onFinishInflate] can run before this view is attached
+      to its parent. */
+  void ensure_siblings()
   {
-    if (_status_no_dict == null)
+    ViewParent parent = getParent();
+    if (!(parent instanceof View))
+      return;
+    View container = (View)parent;
+    if (_composing_view == null)
+      _composing_view =
+        (TextView)container.findViewById(R.id.candidates_composing);
+    if (_grid != null && _keyboard_view != null)
+      return;
+    _grid = (GridView)container.findViewById(R.id.candidates_grid);
+    _keyboard_view = container.findViewById(R.id.keyboard_view);
+    if (_grid != null && _grid_adapter == null)
     {
-      _status_no_dict = View.inflate(getContext(),
-          R.layout.candidates_status_no_dict, null);
-      addView(_status_no_dict);
+      _grid_adapter = new GridAdapter();
+      _grid.setAdapter(_grid_adapter);
     }
-    Locale current_locale = (config.device_locales.default_ != null) ?
-      Locale.forLanguageTag(config.device_locales.default_.lang_tag) : null;
-    TextView tv = _status_no_dict.findViewById(android.R.id.text1);
-    if (tv != null && current_locale != null)
-      tv.setText(getResources().getString(
-            R.string.candidates_status_click_to_install,
-            current_locale.getDisplayName()));
-    _status_no_dict.setVisibility(View.VISIBLE);
   }
 
-  void setup_dictionary_switch_button()
+  /** Swap the keyboard area for a scrollable grid holding every candidate.
+      The grid takes the exact height of the keyboard, so the input view keeps
+      its size and the app below is not resized. Tapping again restores it. */
+  void toggle_expanded()
   {
-    _dictionary_switch_button = findViewById(R.id.dictionary_switch);
-    _dictionary_switch_button.setOnClickListener(new View.OnClickListener()
-        {
-          @Override
-          public void onClick(View _v)
+    ensure_siblings();
+    if (_grid == null || _keyboard_view == null)
+      return;
+    _expanded = !_expanded;
+    if (_expanded)
+    {
+      int h = _keyboard_view.getHeight();
+      if (h <= 0)
+        h = _keyboard_view.getMeasuredHeight();
+      if (h <= 0)
+        h = (int)(getResources().getDisplayMetrics().density * 240);
+      ViewGroup.LayoutParams lp = _grid.getLayoutParams();
+      lp.height = h;
+      _grid.setLayoutParams(lp);
+      _keyboard_view.setVisibility(View.GONE);
+      _grid.setVisibility(View.VISIBLE);
+    }
+    else
+    {
+      _grid.setVisibility(View.GONE);
+      _keyboard_view.setVisibility(View.VISIBLE);
+    }
+    update_expand_icon();
+    refresh_grid();
+    requestLayout();
+  }
+
+  /** Return to the keyboard, e.g. when the editor or the configuration
+      changes. Safe to call while already collapsed. */
+  void collapse()
+  {
+    if (!_expanded)
+      return;
+    _expanded = false;
+    ensure_siblings();
+    if (_grid != null)
+      _grid.setVisibility(View.GONE);
+    if (_keyboard_view != null)
+      _keyboard_view.setVisibility(View.VISIBLE);
+    update_expand_icon();
+    requestLayout();
+  }
+
+  /** Show the pinyin letters being composed above the row. Chinese layouts
+      only: on a latin layout the editor already shows exactly what was
+      typed. The line is a sibling kept GONE when unused, so the keyboard
+      does not grow while typing English. */
+  void set_composing(String text, int cursor)
+  {
+    ensure_siblings();
+    if (_composing_view == null)
+      return;
+    boolean show = is_chinese() && text.length() > 0
+        && getVisibility() == View.VISIBLE;
+    if (show)
+    {
+      int c = Math.max(0, Math.min(cursor, text.length()));
+      /* The caret is a literal bar inside the line: no custom drawing, no
+         extra view, and it moves with the arrow keys exactly like the text
+         it belongs to. */
+      SpannableString s = new SpannableString(
+          text.substring(0, c) + "|" + text.substring(c));
+      s.setSpan(new StyleSpan(Typeface.BOLD), c, c + 1,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+      _composing_view.setText(s);
+    }
+    else
+      _composing_view.setText("");
+    _composing_view.setVisibility(show ? View.VISIBLE : View.GONE);
+  }
+
+  /** Keep the two controls in sync with the row. The expand button is
+      pointless with no candidates, and an empty row must also close the grid:
+      otherwise the button disappears and there is nothing left to close it
+      with. The mode mark follows the layout's script, not the row. */
+  void update_controls()
+  {
+    boolean has_candidates = !_candidates.isEmpty();
+    if (!has_candidates && _expanded)
+      collapse();
+    if (_expand_button != null)
+      _expand_button.setVisibility(has_candidates ? View.VISIBLE : View.GONE);
+    update_mode_indicator();
+  }
+
+  /** A tiny mark pinned to the top-left corner: 中 on a Chinese layout, Eng
+      otherwise. Always present, so the mode stays readable even when there
+      are no candidates. English is drawn smaller because three letters take
+      more room than one glyph. */
+  void update_mode_indicator()
+  {
+    if (_mode_indicator == null)
+      return;
+    boolean chinese = is_chinese();
+    _mode_indicator.setText(chinese ? "中" : "Eng");
+    _mode_indicator.setContentDescription(
+        chinese ? "中文输入" : "English input");
+    if (_text_size > 0)
+      set_text_size(_mode_indicator,
+          _text_size * (chinese ? 0.42f : 0.32f), false);
+  }
+
+  /** The control is an icon, and the icon states which way it will toggle. */
+  void update_expand_icon()
+  {
+    if (_expand_button == null)
+      return;
+    _expand_button.setImageResource(_expanded ?
+        R.drawable.ic_candidates_collapse : R.drawable.ic_candidates_expand);
+    _expand_button.setContentDescription(
+        _expanded ? "收起候选字表" : "展开候选字表");
+  }
+
+  void refresh_grid()
+  {
+    ensure_siblings();
+    if (_grid_adapter == null)
+      return;
+    /* Widen the columns to fit the longest candidate: a two-character word
+       or a short phrase must not be clipped in the expanded table. */
+    int longest = 1;
+    for (Composer.Candidate c : _candidates)
+      longest = Math.max(longest, c.text.length());
+    float density = getResources().getDisplayMetrics().density;
+    int min_w = (int)(38 * density);
+    int w = min_w;
+    if (_candidate_size > 0)
+      w = Math.max(w, (int)(longest * _candidate_size * 1.02f)
+          + (int)(8 * density));
+    _grid.setColumnWidth(w);
+    _grid_adapter.notifyDataSetChanged();
+  }
+
+  /** One cell per candidate, text only, sharing the strip's label colour and
+      cell background. A tap commits the word; the grid stays open while there
+      are still candidates, and closes itself when the row is emptied. */
+  class GridAdapter extends BaseAdapter
+  {
+    @Override
+    public int getCount()
+    {
+      return _expanded ? _candidates.size() : 0;
+    }
+
+    @Override
+    public Object getItem(int i)
+    {
+      return _candidates.get(i).text;
+    }
+
+    @Override
+    public long getItemId(int i)
+    {
+      return i;
+    }
+
+    @Override
+    public View getView(int i, View reused, ViewGroup parent)
+    {
+      TextView cell;
+      if (reused instanceof TextView)
+        cell = (TextView)reused;
+      else
+      {
+        cell = new TextView(getContext(), null, 0, R.style.candidates_text);
+        cell.setGravity(Gravity.CENTER);
+        cell.setBackgroundResource(R.drawable.suggestions_item_background);
+        int pad = (int)(getResources().getDisplayMetrics().density * 2);
+        cell.setPadding(pad, pad, pad, pad);
+        int cell_h = (int)(_candidate_size * 1.65f);
+        if (cell_h < 48)
+          cell_h = 48;
+        cell.setLayoutParams(new AbsListView.LayoutParams(
+              ViewGroup.LayoutParams.MATCH_PARENT, cell_h));
+      }
+      final String text = _candidates.get(i).text;
+      cell.setText(text);
+      if (_candidate_size > 0)
+        cell.setTextSize(TypedValue.COMPLEX_UNIT_PX, _candidate_size);
+      cell.setOnClickListener(new View.OnClickListener()
           {
-            Config.globalConfig().handler.key_up(
-                KeyValue.getKeyByName("change_dictionary"),
-                Pointers.Modifiers.EMPTY);
-          }
-        });
+            @Override
+            public void onClick(View _v)
+            {
+              VibratorCompat.vibrate(_v, Config.globalConfig());
+              Config.globalConfig().handler.suggestion_entered(text);
+            }
+          });
+      return cell;
+    }
   }
 
   /** Whether the candidates view should be shown for a given editor. */
