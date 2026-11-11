@@ -13,6 +13,7 @@ import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.prefs.CustomExtraKeysPreference;
 import juloo.keyboard2.prefs.ExtraKeysPreference;
 import juloo.keyboard2.prefs.LayoutsPreference;
+import juloo.keyboard2.staged.Composer;
 
 public final class Config
 {
@@ -368,6 +369,13 @@ public final class Config
     public void key_up(KeyValue value, Pointers.Modifiers mods);
     public void mods_changed(Pointers.Modifiers mods);
     public void suggestion_entered(String text);
+    /** Enter a candidate of the composition. Candidates that answer only the
+        beginning of it keep the rest of the letters composed. Handlers that
+        do not compose only see the text. */
+    public default void suggestion_entered(Composer.Candidate candidate)
+    {
+      suggestion_entered(candidate.text);
+    }
   }
 
   /** Config migrations. */

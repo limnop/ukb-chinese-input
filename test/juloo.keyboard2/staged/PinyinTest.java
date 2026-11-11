@@ -2,6 +2,7 @@ package juloo.keyboard2.staged;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import java.io.BufferedReader;
 import java.io.File;
@@ -156,17 +157,66 @@ public class PinyinTest
   }
 
   @Test
-  public void both_scripts_are_offered_with_simplified_first()
+  public void a_character_is_offered_once()
   {
     List<String> ying = texts("ying");
     // The list is not capped: 英 is reachable, it is not among the three most
     // frequent characters of "ying".
     assertTrue(ying.size() > 3);
     assertTrue(ying.contains("英"));
-    // Simplified candidates come first, the traditional ones are appended
-    // after all of them.
     assertEquals("应", ying.get(0));
-    assertTrue(ying.indexOf("英") < ying.indexOf("應"));
+    /* The traditional spelling used to be appended after all the simplified
+       ones. Both spellings of the same character next to each other is what a
+       user calls a row that repeats itself, and this layout writes simplified
+       characters; Zhuyin is the way to type the traditional ones. */
+    assertFalse(ying.contains("應"));
+  }
+
+  @Test
+  public void a_row_that_repeats_its_beginning_is_shortened()
+  {
+    List<Composer.Candidate> cs = new ArrayList<Composer.Candidate>();
+    cs.add(new Composer.Candidate("你好"));
+    cs.add(new Composer.Candidate("你好吗"));
+    cs.add(new Composer.Candidate("你好啊"));
+    cs.add(new Composer.Candidate("你好呀"));
+    cs.add(new Composer.Candidate("你好坏"));
+    cs.add(new Composer.Candidate("你好毒"));
+    assertEquals(4, Pinyin.tidy(cs).size());
+    /* A candidate that answers only the beginning of the pinyin is the way a
+       long word is typed part by part, it is never counted as a repeat. */
+    cs.add(new Composer.Candidate("你", null, 2));
+    assertEquals(5, Pinyin.tidy(cs).size());
+  }
+
+  @Test
+  public void a_traditional_spelling_is_not_repeated_next_to_the_simplified_one()
+  {
+    List<Composer.Candidate> cs = new ArrayList<Composer.Candidate>();
+    cs.add(new Composer.Candidate("中国"));
+    cs.add(new Composer.Candidate("中國"));
+    List<String> kept = texts(Pinyin.tidy(cs));
+    assertEquals(1, kept.size());
+    assertEquals("中国", kept.get(0));
+  }
+
+  @Test
+  public void a_candidate_can_answer_the_beginning_of_the_pinyin()
+  {
+    Pinyin pinyin = typed("nihao");
+    Composer.Candidate ni = null;
+    for (Composer.Candidate c : pinyin.candidates())
+      if (c.text.equals("你") && c.consumed > 0)
+        ni = c;
+    assertNotNull(ni);
+    // "您" covers "ni", the "hao" is left to be composed.
+    assertEquals(2, ni.consumed);
+    assertEquals("hao", pinyin.accept(ni));
+    assertEquals("hao", pinyin.text());
+    assertEquals("好", pinyin.candidates().get(0).text);
+    // The caret follows the letters that were taken.
+    assertTrue(pinyin.backspace());
+    assertEquals("ha", pinyin.text());
   }
 
   @Test
