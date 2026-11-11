@@ -61,6 +61,15 @@ public interface Composer
       being composed. */
   public String text();
 
+  /** Caret position inside [text]. Composers that only append keys always
+      have it at the end; Chinese pinyin lets the user move it to edit what
+      was typed. */
+  public default int cursor() { return text().length(); }
+
+  /** Move the caret by [d] characters. Return [true] when the composer
+      handled the move, so the editor's own cursor is left alone. */
+  public default boolean move_cursor(int d) { return false; }
+
   /** Candidates that can replace the whole composition, the best one first.
       The list is not bounded: the candidates view shows as many of them as it
       can and scrolls through the rest. Empty when the composition does not

@@ -1,6 +1,9 @@
 package juloo.keyboard2.staged;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** The characters that can be typed with the Pinyin and Zhuyin input methods.
@@ -1847,6 +1850,10 @@ final class PinyinData
 
   private static final Map<String, String> _syllables = new HashMap<String, String>();
   private static final Map<String, String> _tones = new HashMap<String, String>();
+  /** Cached results of [syllables_with_prefix], which the composer asks for
+      on every keystroke. */
+  private static final Map<String, List<String>> _prefix_cache =
+      new HashMap<String, List<String>>();
   private static final Map<String, String> _zhuyin = new HashMap<String, String>();
   private static final Map<Character, Character> _variants = new HashMap<Character, Character>();
   private static final Map<Character, Character> _simplified = new HashMap<Character, Character>();
@@ -1902,6 +1909,35 @@ final class PinyinData
       if (spelling.startsWith(prefix))
         return true;
     return false;
+  }
+
+  /** Every complete pinyin syllable that starts with [prefix], short ones
+      first (they are the common ones) and then alphabetical. Used to keep
+      offering candidates while the last syllable is only half typed: "n"
+      reaches "na", "ne", "ni", "nai", ... Results are cached because the
+      composer asks on every keystroke. Manual addition, the generator does
+      not emit it. */
+  static List<String> syllables_with_prefix(String prefix)
+  {
+    List<String> cached = _prefix_cache.get(prefix);
+    if (cached != null)
+      return cached;
+    List<String> out = new ArrayList<String>();
+    for (String syllable : _syllables.keySet())
+      if (syllable.startsWith(prefix))
+        out.add(syllable);
+    Collections.sort(out, new java.util.Comparator<String>()
+        {
+          public int compare(String a, String b)
+          {
+            if (a.length() != b.length())
+              return a.length() - b.length();
+            return a.compareTo(b);
+          }
+        });
+    cached = Collections.unmodifiableList(out);
+    _prefix_cache.put(prefix, cached);
+    return cached;
   }
 
   /** The traditional variant of [c], or [c] itself when it has none. */
