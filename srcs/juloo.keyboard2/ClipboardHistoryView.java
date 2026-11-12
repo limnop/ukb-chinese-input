@@ -99,6 +99,15 @@ public final class ClipboardHistoryView extends NonScrollListView
             @Override
             public void onClick(View v) { paste_entry(pos); }
           });
+      v.findViewById(R.id.clipboard_entry_splitpaste).setOnClickListener(
+          new View.OnClickListener()
+          {
+            @Override public void onClick(View v)
+            {
+              ClipboardTextSegmentDialog.show(getContext(), v,
+                  _history.get(pos));
+            }
+          });
       // v.findViewById(R.id.clipboard_entry_removehist).setOnClickListener(
       //     new View.OnClickListener()
       //     {

@@ -556,6 +556,32 @@ public class CandidatesView extends LinearLayout
       s.setSpan(new StyleSpan(Typeface.BOLD), c, c + 1,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
       _composing_view.setText(s);
+      /* Keep the insertion point visible when a longer English word exceeds
+         the one-line composing strip. The strip scrolls horizontally, while
+         the text itself remains available by moving the caret. */
+      final int cursor_offset = c + 1;
+      _composing_view.post(new Runnable()
+          {
+            @Override
+            public void run()
+            {
+              android.text.Layout layout = _composing_view.getLayout();
+              if (layout == null)
+                return;
+              int content_width = _composing_view.getWidth()
+                - _composing_view.getCompoundPaddingLeft()
+                - _composing_view.getCompoundPaddingRight();
+              if (content_width <= 0)
+                return;
+              int max_scroll = Math.max(0, (int)Math.ceil(
+                    layout.getLineRight(0) - content_width));
+              int cursor_x = (int)Math.ceil(layout.getPrimaryHorizontal(
+                    Math.min(cursor_offset, layout.getText().length())));
+              int scroll_x = Math.max(0, Math.min(max_scroll,
+                    cursor_x - content_width));
+              _composing_view.scrollTo(scroll_x, 0);
+            }
+          });
     }
     else
       _composing_view.setText("");

@@ -13,6 +13,9 @@
     <item name="android:textColor">?attr/colorLabel</item>
     <item name="android:textSize">13sp</item>
     <item name="android:maxLines">1</item>
+    <item name="android:singleLine">true</item>
+    <item name="android:scrollHorizontally">true</item>
+    <item name="android:textDirection">ltr</item>
     <item name="android:background">?attr/colorKeyboard</item>
   </style>
   <!-- Candidates view -->
@@ -159,6 +162,17 @@
     <item name="android:layout_marginHorizontal">2dp</item>
     <item name="android:backgroundTint">?attr/colorLabel</item>
     <item name="android:backgroundTintMode">src_in</item>
+  </style>
+  <style name="clipboardEntrySplitButton">
+    <item name="android:layout_width">wrap_content</item>
+    <item name="android:layout_height">32dp</item>
+    <item name="android:minWidth">40dp</item>
+    <item name="android:gravity">center</item>
+    <item name="android:layout_marginHorizontal">2dp</item>
+    <item name="android:paddingHorizontal">4dp</item>
+    <item name="android:textSize">12sp</item>
+    <item name="android:textColor">?attr/colorLabel</item>
+    <item name="android:background">?android:attr/selectableItemBackground</item>
   </style>
   <!-- Launcher activity -->
   <style name="paragraph">

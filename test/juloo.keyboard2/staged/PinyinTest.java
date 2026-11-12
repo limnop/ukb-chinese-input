@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 
@@ -131,6 +132,28 @@ public class PinyinTest
     assertEquals("你好", texts("nihao").get(0));
     assertEquals("中国", texts("zhongguo").get(0));
     assertEquals("你号", texts("nihao").get(1));
+  }
+
+  @Test
+  public void dictionary_duplicates_do_not_remove_common_characters()
+  {
+    Pinyin.WordSource previous = Pinyin.word_source;
+    Pinyin.word_source = new Pinyin.WordSource()
+    {
+      @Override public List<String> words(String code, int limit)
+      {
+        return code.equals("a") ? Arrays.asList("啊", "阿", "吖")
+            : new ArrayList<String>();
+      }
+    };
+    try
+    {
+      assertEquals("啊", candidates("a").get(0).text);
+    }
+    finally
+    {
+      Pinyin.word_source = previous;
+    }
   }
 
   @Test
@@ -290,8 +313,8 @@ public class PinyinTest
     // are offered as the candidates of each part.
     assertTrue(texts("xian").contains("先"));
     List<String> split = texts("xi'an");
+    assertTrue(split.toString(), split.contains("西安"));
     assertTrue(split.toString(), split.contains("西"));
-    assertTrue(split.toString(), split.contains("安"));
     // 先 is a candidate of "xian" as a whole, it must not come back here.
     assertFalse(split.toString(), split.contains("先"));
   }
@@ -344,14 +367,14 @@ public class PinyinTest
   }
 
   @Test
-  public void the_last_part_of_a_split_comes_first()
+  public void the_whole_reading_of_a_split_comes_first()
   {
-    // The characters of "xi" are picked after seeing where the split leads:
-    // the part that completes the composition is offered first.
+    // The full candidate is offered before the partial candidate for "xi".
     List<String> ts = texts("xi'an");
-    assertTrue(ts.toString(), ts.indexOf("安") < ts.indexOf("西"));
-    // Both parts stay offerable, "西" is how the composition is taken apart.
+    assertTrue(ts.toString(), ts.indexOf("西安") < ts.indexOf("西"));
+    // The earlier part stays offerable to compose "xi'an" in pieces.
     assertTrue(ts.toString(), ts.contains("西"));
-    assertTrue(ts.toString(), ts.contains("安"));
+    assertTrue(ts.toString(), ts.contains("西安"));
+    assertFalse(ts.toString(), ts.contains("安"));
   }
 }

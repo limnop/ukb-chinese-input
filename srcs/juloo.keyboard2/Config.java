@@ -198,8 +198,8 @@ public final class Config
     current_layout_narrow = _prefs.getInt("current_layout_portrait", 0);
     current_layout_wide = _prefs.getInt("current_layout_landscape", 0);
     circle_sensitivity = Integer.valueOf(_prefs.getString("circle_sensitivity", "2"));
-    clipboard_history_enabled = _prefs.getBoolean("clipboard_history_enabled", false);
-    clipboard_history_duration = Integer.parseInt(_prefs.getString("clipboard_history_duration", "5"));
+    clipboard_history_enabled = _prefs.getBoolean("clipboard_history_enabled", true);
+    clipboard_history_duration = Integer.parseInt(_prefs.getString("clipboard_history_duration", "-1"));
     space_bar_auto_complete = _prefs.getBoolean("space_bar_auto_complete", false);
     physical_keyboard_hide = _prefs.getString("physical_keyboard_behavior", "hide").equals("hide");
     float screen_width_dp = dm.widthPixels / dm.density;

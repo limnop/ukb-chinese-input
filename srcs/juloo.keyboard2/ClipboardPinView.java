@@ -46,6 +46,8 @@ public final class ClipboardPinView extends NonScrollListView
   /** Pin a clipboard and persist the change. */
   public void add_entry(String text)
   {
+    if (_entries.contains(text))
+      return;
     _entries.add(0,text);
     _adapter.notifyDataSetChanged();
     persist();
@@ -118,6 +120,15 @@ public final class ClipboardPinView extends NonScrollListView
           {
             @Override
             public void onClick(View v) { paste_entry(pos); }
+          });
+      v.findViewById(R.id.clipboard_pin_splitpaste).setOnClickListener(
+          new View.OnClickListener()
+          {
+            @Override public void onClick(View v)
+            {
+              ClipboardTextSegmentDialog.show(getContext(), v,
+                  _entries.get(pos));
+            }
           });
       v.findViewById(R.id.clipboard_pin_remove).setOnClickListener(
           new View.OnClickListener()

@@ -1,6 +1,7 @@
 package juloo.keyboard2.dict;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -9,7 +10,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import juloo.keyboard2.staged.Pinyin;
 
@@ -44,16 +47,29 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
       syllables that happen to sort earliest, which would bury everything the
       user is likely to want. */
   static final int PREFIX_MIN_LENGTH = 3;
+  /** Keep the personalization store small and quick to load. */
+  static final int LEARNED_LIMIT = 512;
 
   static volatile ChineseWordDictionary _loaded = null;
   static volatile boolean _loading = false;
 
   final byte[] _data;
   final int[] _line_starts;
+  final SharedPreferences _learning;
+  final LinkedHashMap<String, Integer> _learned =
+    new LinkedHashMap<String, Integer>();
 
-  ChineseWordDictionary(byte[] data)
+  ChineseWordDictionary(byte[] data, Context context)
   {
     _data = data;
+    _learning = context.getSharedPreferences("pinyin_learning",
+        Context.MODE_PRIVATE);
+    Map<String, ?> saved = _learning.getAll();
+    for (Map.Entry<String, ?> e : saved.entrySet())
+      if (e.getKey().startsWith("w:") && e.getValue() instanceof Integer)
+        _learned.put(e.getKey(), (Integer)e.getValue());
+    while (_learned.size() > LEARNED_LIMIT)
+      _learned.remove(_learned.keySet().iterator().next());
     int count = 0;
     for (int i = 0; i < data.length; i++)
       if (data[i] == '\n')
@@ -113,7 +129,7 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
                 data = out.toByteArray();
               }
               in.close();
-              ChineseWordDictionary d = new ChineseWordDictionary(data);
+              ChineseWordDictionary d = new ChineseWordDictionary(data, app);
               _loaded = d;
               Pinyin.word_source = d;
             }
@@ -133,7 +149,7 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
     while (lo < hi)
     {
       int mid = (lo + hi) >>> 1;
-      if (code_at(mid).compareTo(code) < 0)
+      if (compare_code(mid, code) < 0)
         lo = mid + 1;
       else
         hi = mid;
@@ -141,13 +157,88 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
     return lo;
   }
 
-  String code_at(int line)
+  /** Compare a dictionary code to [code] without allocating a String. */
+  int compare_code(int line, String code)
   {
     int p = _line_starts[line];
-    int e = p;
-    while (e < _data.length && _data[e] != '\t')
-      e++;
-    return new String(_data, p, e - p, StandardCharsets.US_ASCII);
+    int i = 0;
+    while (p < _data.length && _data[p] != '\t' && i < code.length())
+    {
+      int a = _data[p++] & 0xff;
+      int b = code.charAt(i++);
+      if (a != b)
+        return a - b;
+    }
+    if (p < _data.length && _data[p] != '\t')
+      return 1;
+    return i == code.length() ? 0 : -1;
+  }
+
+  boolean code_starts_with(int line, String prefix)
+  {
+    int p = _line_starts[line];
+    for (int i = 0; i < prefix.length(); i++)
+      if (p >= _data.length || _data[p++] != prefix.charAt(i))
+        return false;
+    return true;
+  }
+
+  boolean same_code(int a, int b)
+  {
+    int p = _line_starts[a], q = _line_starts[b];
+    while (p < _data.length && q < _data.length
+        && _data[p] == _data[q] && _data[p] != '\t')
+    {
+      p++;
+      q++;
+    }
+    return p < _data.length && q < _data.length
+      && _data[p] == '\t' && _data[q] == '\t';
+  }
+
+  int code_length(int line)
+  {
+    int p = _line_starts[line];
+    int n = 0;
+    while (p < _data.length && _data[p++] != '\t')
+      n++;
+    return n;
+  }
+
+  int learned_count(String code, String word)
+  {
+    synchronized (_learned)
+    {
+      Integer count = _learned.get(learning_key(code, word));
+      return count == null ? 0 : count.intValue();
+    }
+  }
+
+  static String learning_key(String code, String word)
+  {
+    return "w:" + code + ":" + word;
+  }
+
+  @Override
+  public void record_selection(String code, String word)
+  {
+    if (code.length() == 0 || word.length() == 0)
+      return;
+    String key = learning_key(code, word);
+    synchronized (_learned)
+    {
+      int count = _learned.containsKey(key) ? _learned.get(key).intValue() : 0;
+      count = Math.min(1000, count + 1);
+      _learned.put(key, Integer.valueOf(count));
+      SharedPreferences.Editor edit = _learning.edit().putInt(key, count);
+      while (_learned.size() > LEARNED_LIMIT)
+      {
+        String oldest = _learned.keySet().iterator().next();
+        _learned.remove(oldest);
+        edit.remove(oldest);
+      }
+      edit.apply();
+    }
   }
 
   int parse_int(int p, int end)
@@ -172,7 +263,7 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
     List<Hit> hits = new ArrayList<Hit>();
     int i = lower_bound(code);
     int collected = 0, rows = 0;
-    String prev_code = null;
+    int prev_line = -1;
     int per_code = 0;
     while (i < _line_starts.length && collected < SCAN_LIMIT
         && rows < ROW_LIMIT)
@@ -191,24 +282,22 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
       }
       if (t1 < 0 || t2 < 0)
         break;
-      String line_code =
-        new String(_data, p, t1 - p, StandardCharsets.US_ASCII);
-      if (exact_only ? !line_code.equals(code) : !line_code.startsWith(code))
+      boolean exact = compare_code(i - 1, code) == 0;
+      if (exact_only ? !exact : !code_starts_with(i - 1, code))
         break;
-      if (!line_code.equals(prev_code))
+      if (prev_line < 0 || !same_code(prev_line, i - 1))
       {
-        prev_code = line_code;
+        prev_line = i - 1;
         per_code = 0;
       }
-      boolean exact = line_code.equals(code);
       /* An exact spelling is worth reading in full. Extended codes get a
          small quota so the scan also reaches the codes that follow. */
       if (!exact && per_code >= PER_CODE)
         continue;
       String word = new String(_data, t2 + 1, end - t2 - 1,
           StandardCharsets.UTF_8);
-      hits.add(new Hit(exact, line_code.length(),
-          parse_int(t1 + 1, t2), word));
+      hits.add(new Hit(exact, code_length(i - 1), parse_int(t1 + 1, t2),
+          learned_count(code, word), word));
       per_code++;
       collected++;
     }
@@ -231,13 +320,15 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
     final boolean exact;
     final int code_len;
     final int weight;
+    final int learned;
     final String word;
 
-    Hit(boolean e, int c, int w, String s)
+    Hit(boolean e, int c, int w, int l, String s)
     {
       exact = e;
       code_len = c;
       weight = w;
+      learned = l;
       word = s;
     }
   }
@@ -252,6 +343,8 @@ public final class ChineseWordDictionary implements Pinyin.WordSource
     {
       if (a.exact != b.exact)
         return a.exact ? -1 : 1;
+      if (a.learned != b.learned)
+        return (a.learned > b.learned) ? -1 : 1;
       if (a.weight != b.weight)
         return (a.weight > b.weight) ? -1 : 1;
       if (a.code_len != b.code_len)

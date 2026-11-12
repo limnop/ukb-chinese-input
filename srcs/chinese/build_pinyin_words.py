@@ -34,8 +34,8 @@ import sys
 import unicodedata
 
 MAX_WORD_CHARS = 12
-MIN_SCORE = 120
-MAX_PER_CODE = 400
+MIN_SCORE = 90
+MAX_PER_CODE = 600
 
 # u-umlaut is written `v` in the pinyin the keyboard produces.
 UMLAUT = str.maketrans({

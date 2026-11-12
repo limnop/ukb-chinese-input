@@ -66,6 +66,11 @@
     <juloo.keyboard2.prefs.SlideBarPreference android:key="custom_border_line_width" android:title="@string/pref_border_width_title" android:summary="%sdp" android:defaultValue="0" min="0" max="5" android:dependency="border_config"/>
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_clipboard">
-    <ListPreference android:key="clipboard_history_duration" android:title="@string/pref_clipboard_history_duration" android:summary="%s" android:defaultValue="5" android:entries="@array/pref_clipboard_duration_entries" android:entryValues="@array/pref_clipboard_duration_values"/>
+    <ListPreference android:key="clipboard_history_duration" android:title="@string/pref_clipboard_history_duration" android:summary="%s" android:defaultValue="-1" android:entries="@array/pref_clipboard_duration_entries" android:entryValues="@array/pref_clipboard_duration_values"/>
+    <PreferenceScreen android:title="@string/pref_clipboard_sync_settings" android:summary="@string/pref_clipboard_sync_summary">
+      <EditTextPreference android:key="syncclipboard_url" android:title="@string/clipboard_sync_url" android:dialogTitle="@string/clipboard_sync_url" android:inputType="textUri" android:singleLine="true" android:defaultValue=""/>
+      <EditTextPreference android:key="syncclipboard_user" android:title="@string/clipboard_sync_user" android:dialogTitle="@string/clipboard_sync_user" android:inputType="textVisiblePassword" android:singleLine="true" android:defaultValue=""/>
+      <EditTextPreference android:key="syncclipboard_password" android:title="@string/clipboard_sync_password" android:dialogTitle="@string/clipboard_sync_password" android:inputType="textPassword" android:singleLine="true" android:defaultValue=""/>
+    </PreferenceScreen>
   </PreferenceCategory>
 </PreferenceScreen>
