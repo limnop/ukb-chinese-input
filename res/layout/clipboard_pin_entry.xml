@@ -3,6 +3,7 @@
   <TextView android:id="@+id/clipboard_pin_text" style="@style/clipboardEntry" android:maxLines="3"/>
   <LinearLayout style="@style/clipboardEntryButtons">
     <View android:id="@+id/clipboard_pin_paste" style="@style/clipboardEntryButton" android:background="@drawable/ic_clipboard_paste"/>
+    <TextView android:id="@+id/clipboard_pin_splitpaste" style="@style/clipboardEntrySplitButton" android:text="@string/clipboard_split_button"/>
     <View android:id="@+id/clipboard_pin_remove" style="@style/clipboardEntryButton" android:background="@drawable/ic_delete"/>
   </LinearLayout>
 </LinearLayout>

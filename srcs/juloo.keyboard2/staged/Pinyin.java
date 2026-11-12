@@ -29,6 +29,8 @@ public final class Pinyin implements Composer
       keyboard sends; the typographic one is what a pasted text carries. */
   static final char SEPARATOR = '\'';
   static final char SEPARATOR_TYPOGRAPHIC = '\u2019';
+  /** Internal marker for an apostrophe that belongs to the text, not a split. */
+  private static final char LITERAL_APOSTROPHE = '\u0007';
   /** Splits can be nested, "zhong'guo'ren" has three parts. */
   private static final int MAX_PARTS = 8;
   /** The longest pinyin syllable, "zhuang", "chuang" and "shuang". */
@@ -70,6 +72,9 @@ public final class Pinyin implements Composer
   {
     /** Words whose pinyin code starts with [code], best first. */
     List<String> words(String code, int limit);
+
+    /** Remember a word selected for the spelling currently being typed. */
+    default void record_selection(String code, String word) {}
   }
 
   private final StringBuilder _keys = new StringBuilder();
@@ -77,6 +82,12 @@ public final class Pinyin implements Composer
       of the pinyin can be fixed without retyping the rest. Candidates are
       still computed from the whole string. */
   private int _cursor = 0;
+  /** Candidate rows are requested more than once while one key is being
+      refreshed. Reuse the row until the input or dictionary changes. */
+  private long _revision = 0;
+  private long _candidate_revision = -1;
+  private WordSource _candidate_word_source;
+  private List<Composer.Candidate> _candidate_cache;
 
   @Override
   public boolean type(String s)
@@ -89,9 +100,9 @@ public final class Pinyin implements Composer
       if (!is_letter(c) && !is_separator(c))
         return false;
     }
-    /* A separator where the syllables already end by themselves, at the very
-       start, or twice in a row, says nothing: dropping it keeps "ni'" from
-       looking like it does something. */
+    /* Keep useful apostrophes as reading separators. If one cannot separate
+       two pinyin parts (at the start, after another separator, or after n/r),
+       retain it as literal text instead of swallowing an English apostrophe. */
     for (int i = 0; i < s.length(); i++)
     {
       char c = s.charAt(i);
@@ -103,21 +114,27 @@ public final class Pinyin implements Composer
         continue;
       }
       if (_keys.length() == 0 || _cursor == 0
-          || _keys.charAt(_cursor - 1) == SEPARATOR)
+          || is_separator(_keys.charAt(_cursor - 1))
+          || _keys.charAt(_cursor - 1) == LITERAL_APOSTROPHE)
+      {
+        _keys.insert(_cursor++, LITERAL_APOSTROPHE);
         continue;
+      }
       /* A separator is kept wherever it can change the reading: after a
          syllable that could go on ("xian" against "xi'an", "fangan" against
-         "fang'an"). Behind an "n" or an "r" it changes nothing - no syllable
-         goes on with those letters followed by a vowel - so "men'a" is stored
-         as "mena" and still reads 们 + 啊. */
+         "fang'an"). Behind n/r it cannot change the reading, so preserve the
+         apostrophe as literal text instead. */
       char before = _keys.charAt(_cursor - 1);
       if (_cursor >= 2 && (before == 'n' || before == 'r'))
+      {
+        _keys.insert(_cursor++, LITERAL_APOSTROPHE);
         continue;
+      }
       _keys.insert(_cursor++, SEPARATOR);
     }
-    /* The key was a letter or a separator, it was consumed even when the
-       separator ended up dropped: sending it as text would put a "'" into the
-       editor in the middle of the pinyin. */
+    _revision++;
+    /* Letters, useful separators, and literal apostrophes are all retained in
+       the composition. */
     return true;
   }
 
@@ -134,6 +151,7 @@ public final class Pinyin implements Composer
   @Override
   public boolean backspace()
   {
+    boolean changed = false;
     while (_cursor > 0)
     {
       char c = _keys.charAt(_cursor - 1);
@@ -141,9 +159,15 @@ public final class Pinyin implements Composer
          to be visible on its own: removing the letter before it removes both,
          "xi'" backspaced once leaves "xi". */
       _keys.deleteCharAt(--_cursor);
+      changed = true;
       if (!is_separator(c))
+      {
+        _revision++;
         return true;
+      }
     }
+    if (changed)
+      _revision++;
     return false;
   }
 
@@ -158,7 +182,9 @@ public final class Pinyin implements Composer
     for (int i = 0; i < _keys.length(); i++)
     {
       char c = _keys.charAt(i);
-      if (!is_separator(c))
+      if (c == LITERAL_APOSTROPHE)
+        b.append(SEPARATOR);
+      else if (!is_separator(c))
         b.append(c);
     }
     return b.toString();
@@ -193,21 +219,27 @@ public final class Pinyin implements Composer
   @Override
   public List<Composer.Candidate> candidates()
   {
+    WordSource ws = word_source;
+    if (_candidate_cache != null && _candidate_revision == _revision
+        && _candidate_word_source == ws)
+      return _candidate_cache;
     String keys = _keys.toString();
     if (keys.length() == 0)
       return Collections.emptyList();
     List<Composer.Candidate> out = new ArrayList<Composer.Candidate>();
+    Set<String> seen = new HashSet<String>();
     /* The syllables of the parts read so far, and the ones of the unfinished
        part that is being typed right now. */
     List<String> done = new ArrayList<String>();
+    int whole_letters = 0;
     int part_start = 0;
     /* The word list knows the spelling without the separators, so the whole
        composition is read with the syllables of the parts joined back
        together: "xi'an" is looked up as "xian" and the words are told apart
        by the number of syllables they are spelled with. */
     boolean is_split = keys.indexOf(SEPARATOR) >= 0;
-    /* The first part carries the whole row, the ones after it only fill in
-       their own words: the part the user is working on is the first one. */
+    /* Earlier parts offer candidates for the first part of the composition;
+       the last part builds candidates for the complete syllable sequence. */
     int word_limit = WORD_LIMIT;
     int prefix_limit = MAX_PREFIX_CANDIDATES;
     for (int p = 0; p < MAX_PARTS; p++)
@@ -224,15 +256,21 @@ public final class Pinyin implements Composer
       Reading r = reading(part, !end);
       if (r == null)
         break;
+      int previous_syllables = done.size();
       done.addAll(r.head);
       done.add(r.tail);
+      for (String syllable : r.head)
+        whole_letters += syllable.length();
+      whole_letters += r.tail.length();
       /* The words of the whole composition belong to the last part: it is the
          one that completes it. A part in the middle only offers its
          characters. */
       boolean completes = end && PinyinData.chars(r.tail) != null;
       int before = out.size();
-      add_part(r, join(done), done.size(), is_split, completes, word_limit,
-          prefix_limit, out);
+      String whole = (completes && ws != null) ? join(done) : null;
+      add_part(r, whole, whole_letters, done.size(), is_split, completes,
+          done, previous_syllables > 0, ws, word_limit, prefix_limit,
+          seen, out);
       /* The part that completes the composition comes first: it is what says
          where the split leads ("西 安" for "xi'an") and the characters of the
          earlier parts are the ones the user picks from before that. */
@@ -252,7 +290,10 @@ public final class Pinyin implements Composer
       if (end)
         break;
     }
-    return tidy(out);
+    _candidate_cache = tidy(out);
+    _candidate_revision = _revision;
+    _candidate_word_source = ws;
+    return _candidate_cache;
   }
 
   private static String join(List<String> syllables)
@@ -268,13 +309,12 @@ public final class Pinyin implements Composer
       [answers_all] is set for the last part of a composition whose syllables
       are all complete: it is the only one whose candidates answer the whole
       composition. */
-  private void add_part(Reading r, String whole, int whole_syllables,
-      boolean separated, boolean answers_all, int word_limit, int prefix_limit,
+  private void add_part(Reading r, String whole, int whole_letters,
+      int whole_syllables, boolean separated, boolean answers_all,
+      List<String> all_syllables, boolean has_previous_part, WordSource ws,
+      int word_limit, int prefix_limit, Set<String> seen,
       List<Composer.Candidate> out)
   {
-    Set<String> seen = new HashSet<String>();
-    for (Composer.Candidate c : out)
-      seen.add(c.text);
     boolean tail_complete = PinyinData.chars(r.tail) != null;
     /* The candidates built from the reading itself go at the end of the part,
        the words in front of them. They are marked as split candidates when
@@ -285,17 +325,21 @@ public final class Pinyin implements Composer
        when the composition is split. */
     List<String> exact = new ArrayList<String>(r.head);
     exact.add(r.tail);
-    /* The exact reading, when the last syllable is already complete.
-
-       A part of a split composition only shows the beginning of its
-       characters: the rest of them are rare ones (西 系 细 习 席 息 喜 吸 希 洗
-       戏 then 袭 悉 嘻 稀 熙 夕 ...) and the row belongs to every part at once,
-       so an unbounded list would bury the words of the other parts. */
+    /* Once a separator has introduced an earlier part, candidates from this
+       part must still answer the entire composition. Emitting only the last
+       part (for example 安你好 for xi'annihao) as a whole-composition
+       candidate silently drops the earlier part when it is accepted. */
+    List<String> candidate_syllables =
+      separated && answers_all ? all_syllables : exact;
+    /* The exact reading, when the last syllable is already complete. A split
+       composition is capped because the candidate row also needs the earlier
+       parts' partial candidates. */
     if (tail_complete)
     {
       int limit = separated ? PART_CHARACTER_LIMIT : Integer.MAX_VALUE;
       int added = 0;
-      for (Composer.Candidate c : Syllables.candidates(exact, null, false))
+      for (Composer.Candidate c :
+          Syllables.candidates(candidate_syllables, null, false))
       {
         if (added >= limit)
           break;
@@ -320,17 +364,21 @@ public final class Pinyin implements Composer
        characters below are what is picked from it, and the word list of its
        spelling would only add rare homophone words (戏 惜 袭 悉 ...). The
        words of the whole composition come from the part that ends it. */
-    WordSource ws = word_source;
     if (ws != null && answers_all)
     {
       String code = whole;
       List<Composer.Candidate> word_cs = new ArrayList<Composer.Candidate>();
+      Set<String> word_texts = new HashSet<String>();
       for (String w : ws.words(code, word_limit))
         /* A word spelled with one syllable per character is the only kind a
            split composition can want: see the comment above. Unsplitted, the
            length says nothing and every word is taken. */
-        if ((!separated || w.length() == whole_syllables) && seen.add(w))
+        if ((!separated || w.length() == whole_syllables)
+            && word_texts.add(w))
+        {
+          seen.add(w);
           word_cs.add(new Composer.Candidate(w));
+        }
       if (word_cs.size() > 0)
       {
         /* The syllable combinations above also produce the most common words
@@ -340,7 +388,7 @@ public final class Pinyin implements Composer
            phrases such as 你好啊 at the front of the row. */
         for (Iterator<Composer.Candidate> it =
             out.subList(part_start, out.size()).iterator(); it.hasNext(); )
-          if (seen.contains(it.next().text))
+          if (word_texts.contains(it.next().text))
             it.remove();
         /* Into the row, not in front of the whole thing: the words of a part
            typed on purpose come first. */
@@ -353,7 +401,7 @@ public final class Pinyin implements Composer
         Composer.Candidate c = out.get(i);
         if (c.consumed == 0)
           out.set(i, new Composer.Candidate(c.text, c.annotation,
-                whole.length()));
+                whole_letters));
       }
     /* Syllable cuts: the running text offers, for each boundary of the reading,
        the candidates that answer only the beginning of it. Accepting one keeps
@@ -364,7 +412,8 @@ public final class Pinyin implements Composer
        unfinished tail still marks where the cut before it is. */
     full.add(r.tail);
     StringBuilder prefix = new StringBuilder();
-    for (int i = 0; i < full.size() - 1 && i < MAX_SPLITS; i++)
+    for (int i = 0; !has_previous_part
+        && i < full.size() - 1 && i < MAX_SPLITS; i++)
     {
       prefix.append(full.get(i));
       List<String> part = full.subList(0, i + 1);
@@ -444,6 +493,19 @@ public final class Pinyin implements Composer
   @Override
   public String accept(Composer.Candidate c)
   {
+    if (c.consumed == 0 && _keys.length() > 0)
+    {
+      WordSource ws = word_source;
+      if (ws != null)
+      {
+        StringBuilder code = new StringBuilder(_keys.length());
+        for (int i = 0; i < _keys.length(); i++)
+          if (!is_separator(_keys.charAt(i)))
+            code.append(_keys.charAt(i));
+        if (code.length() > 0)
+          ws.record_selection(code.toString(), c.text);
+      }
+    }
     int n = (c.consumed <= 0) ? _keys.length()
         : Math.min(c.consumed, _keys.length());
     _keys.delete(0, n);
@@ -451,6 +513,7 @@ public final class Pinyin implements Composer
     /* The separator that ended the part just taken goes with it. */
     while (_keys.length() > 0 && _keys.charAt(0) == SEPARATOR)
       _keys.deleteCharAt(0);
+    _revision++;
     if (_keys.length() == 0)
     {
       _cursor = 0;
@@ -509,6 +572,7 @@ public final class Pinyin implements Composer
   {
     _keys.setLength(0);
     _cursor = 0;
+    _revision++;
   }
 
   /** The syllables spelled by the keys typed so far, or an empty list when the
