@@ -38,6 +38,7 @@ import juloo.keyboard2.staged.Composer;
 public class Keyboard2 extends InputMethodService
   implements SharedPreferences.OnSharedPreferenceChangeListener
 {
+  private static final long CLIPBOARD_POLL_INTERVAL_MS = 10000;
   /** The view containing the keyboard and candidates view. */
   private ViewGroup _keyboard_container_view;
   private Keyboard2View _keyboard_layout_view;
@@ -53,6 +54,9 @@ public class Keyboard2 extends InputMethodService
   private ViewGroup _emojiPane = null;
   private ViewGroup _clipboard_pane = null;
   private Handler _handler;
+  private Runnable _clipboardPollTask;
+  private boolean _clipboardPollInFlight = false;
+  private int _clipboardPollGeneration = 0;
 
   private Config _config;
 
@@ -165,6 +169,7 @@ public class Keyboard2 extends InputMethodService
 
   @Override
   public void onDestroy() {
+    stopClipboardPolling();
     super.onDestroy();
 
     _foldStateTracker.close();
@@ -309,10 +314,71 @@ public class Keyboard2 extends InputMethodService
     refresh_config();
     _currentSpecialLayout = refresh_special_layout();
     _keyboard_layout_view.setKeyboard(current_layout());
+    if (_config.editor_config.password_editor)
+      setSpecialLayout(loadLayout(R.xml.latn_qwerty_us));
     refresh_composer();
     _keyeventhandler.started(_config);
     setInputView(_keyboard_container_view);
     Logs.debug_startup_input_view(info, _config);
+    startClipboardPolling();
+  }
+
+  private void startClipboardPolling()
+  {
+    stopClipboardPolling();
+    if (_config.editor_config.password_editor)
+      return;
+    try
+    {
+      if (!new ClipboardSyncClient.Account(this).configured())
+        return;
+    }
+    catch (Exception _e) { return; }
+
+    final int generation = _clipboardPollGeneration;
+    _clipboardPollTask = new Runnable()
+    {
+      @Override public void run()
+      {
+        if (generation != _clipboardPollGeneration
+            || _clipboardPollTask == null)
+          return;
+        if (_clipboardPollInFlight)
+        {
+          _handler.postDelayed(this, CLIPBOARD_POLL_INTERVAL_MS);
+          return;
+        }
+        _clipboardPollInFlight = true;
+        ClipboardSyncClient.pull(Keyboard2.this,
+            new ClipboardSyncClient.Callback()
+            {
+              @Override public void complete(ClipboardSyncClient.Result result)
+              {
+                _clipboardPollInFlight = false;
+                if (generation != _clipboardPollGeneration)
+                  return;
+                if (!result.duplicate && result.file != null)
+                  ClipboardHistoryService.set_current_clip_uri(
+                      Keyboard2.this, result.file.uri, result.file.name);
+                else if (!result.duplicate && result.text != null)
+                  ClipboardHistoryService.set_current_clip_text(
+                      Keyboard2.this, result.text);
+                if (_clipboardPollTask != null)
+                  _handler.postDelayed(_clipboardPollTask,
+                      CLIPBOARD_POLL_INTERVAL_MS);
+              }
+            });
+      }
+    };
+    _handler.post(_clipboardPollTask);
+  }
+
+  private void stopClipboardPolling()
+  {
+    _clipboardPollGeneration++;
+    if (_clipboardPollTask != null)
+      _handler.removeCallbacks(_clipboardPollTask);
+    _clipboardPollTask = null;
   }
 
   @Override
@@ -417,6 +483,7 @@ public class Keyboard2 extends InputMethodService
   @Override
   public void onFinishInputView(boolean finishingInput)
   {
+    stopClipboardPolling();
     super.onFinishInputView(finishingInput);
     _keyboard_layout_view.reset();
   }
