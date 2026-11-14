@@ -53,26 +53,23 @@ public final class WowtypePinyinEngine
               File data_dir = new File(app.getFilesDir(), "wowtype");
               if (!data_dir.exists() && !data_dir.mkdirs())
                 throw new IOException("Could not create WowType data directory");
-              File lexicon = new File(data_dir, "lexicon.tsv");
-              if (!lexicon.exists())
+              org.json.JSONObject manifest;
+              try (InputStream in = app.getAssets().open("wowtype-data.json"))
               {
-                File temp = new File(data_dir, "lexicon.tsv.tmp");
-                InputStream in = app.getAssets().open(LEXICON_ASSET);
-                FileOutputStream out = new FileOutputStream(temp);
-                byte[] buffer = new byte[1 << 16];
-                int count;
-                while ((count = in.read(buffer)) >= 0)
-                  out.write(buffer, 0, count);
-                out.close();
-                in.close();
-                if (!temp.renameTo(lexicon))
-                  throw new IOException("Could not install WowType lexicon");
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[4096]; int n;
+                while ((n = in.read(buffer)) != -1) bytes.write(buffer, 0, n);
+                manifest = new org.json.JSONObject(bytes.toString("UTF-8"));
               }
+              File lexicon = installAsset(app, data_dir, LEXICON_ASSET, "lexicon.tsv",
+                  manifest.getString(LEXICON_ASSET));
+              File model = installAsset(app, data_dir, "wowtype_words.lm", "words.lm",
+                  manifest.getString("wowtype_words.lm"));
               _history_path = new File(data_dir, "history.tsv").getAbsolutePath();
               _user_dict_path = new File(data_dir, "user.tsv").getAbsolutePath();
               _prefs = juloo.keyboard2.DirectBootAwarePreferences
                   .get_shared_preferences(app);
-              long handle = nativeNew(lexicon.getAbsolutePath(),
+              long handle = nativeNew(lexicon.getAbsolutePath(), model.getAbsolutePath(),
                   _history_path, _user_dict_path);
               if (handle != 0)
               {
@@ -80,15 +77,46 @@ public final class WowtypePinyinEngine
                 Pinyin.engine = new NativeEngine();
               }
               else
-                android.util.Log.e("WowType", "Engine initialization failed; legacy fallback disabled");
+                android.util.Log.e("WowType", "Engine initialization failed");
             }
-            catch (IOException | UnsatisfiedLinkError e)
+            catch (IOException | org.json.JSONException | java.security.NoSuchAlgorithmException | UnsatisfiedLinkError e)
             {
-              android.util.Log.e("WowType", "Engine initialization failed; legacy fallback disabled");
+              android.util.Log.e("WowType", "Engine initialization failed", e);
             }
             finally { _loading = false; }
           }
         }, "wowtype-pinyin").start();
+  }
+
+  /** Replace bundled data atomically on content changes, preserving user history. */
+  private static File installAsset(Context app, File dir, String asset,
+      String name, String hash) throws IOException, java.security.NoSuchAlgorithmException
+  {
+    File file = new File(dir, name), stamp = new File(dir, name + ".sha256");
+    if (file.exists() && stamp.exists())
+      try (java.io.FileInputStream in = new java.io.FileInputStream(stamp))
+      {
+        byte[] value = new byte[64];
+        if (in.read(value) == 64 && hash.equals(new String(value, "US-ASCII"))) return file;
+      }
+    File temp = new File(dir, name + ".tmp");
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+    try (InputStream in = app.getAssets().open(asset); FileOutputStream out = new FileOutputStream(temp))
+    {
+      byte[] buffer = new byte[65536]; int n;
+      while ((n = in.read(buffer)) != -1) { out.write(buffer, 0, n); digest.update(buffer, 0, n); }
+      out.getFD().sync();
+    }
+    StringBuilder actual = new StringBuilder();
+    for (byte b : digest.digest()) actual.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
+    if (!hash.equals(actual.toString())) throw new IOException("Asset checksum mismatch: " + asset);
+    if (!temp.renameTo(file)) throw new IOException("Cannot install " + asset);
+    File cache = new File(dir, name + ".wcache");
+    if (cache.exists() && !cache.delete()) throw new IOException("Cannot invalidate lexicon cache");
+    File stampTemp = new File(dir, name + ".sha256.tmp");
+    try (FileOutputStream out = new FileOutputStream(stampTemp)) { out.write(hash.getBytes("US-ASCII")); out.getFD().sync(); }
+    if (!stampTemp.renameTo(stamp)) throw new IOException("Cannot write data version");
+    return file;
   }
 
   private static List<Composer.Candidate> candidates(String code, String context, int limit)
@@ -157,10 +185,13 @@ public final class WowtypePinyinEngine
 
   private static boolean containsHan(String text)
   {
-    for (int i = 0; i < text.length(); i++)
+    for (int i = 0; i < text.length();)
     {
-      Character.UnicodeBlock block = Character.UnicodeBlock.of(text.charAt(i));
-      if (block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+      int codepoint = text.codePointAt(i);
+      i += Character.charCount(codepoint);
+      Character.UnicodeBlock block = Character.UnicodeBlock.of(codepoint);
+      if ((codepoint >= 0x20000 && codepoint <= 0x323AF)
+          || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
           || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
           || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS)
         return true;
@@ -168,7 +199,7 @@ public final class WowtypePinyinEngine
     return false;
   }
 
-  private static native long nativeNew(String lexicon, String history, String userDict);
+  private static native long nativeNew(String lexicon, String model, String history, String userDict);
   private static native String[] nativeInput(long engine, String code, int limit);
   private static native void nativeConfigure(long engine, boolean fuzzy, boolean typoCorrection);
   private static native void nativeSetContext(long engine, String context);
@@ -180,7 +211,7 @@ public final class WowtypePinyinEngine
   {
     @Override public List<Composer.Candidate> candidates(String input, String context)
     {
-      return WowtypePinyinEngine.candidates(input, context, 100);
+      return WowtypePinyinEngine.candidates(input, context, 1000);
     }
 
     @Override public void record_selection(String input, String word, String context)

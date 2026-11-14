@@ -104,22 +104,11 @@ android {
 }
 
 val generateWowtypeLexicon by tasks.registering(Exec::class) {
-  val source = projectDir.resolve("srcs/chinese/data/zh_pinyin.dat")
-  val syllables = projectDir.resolve("vendor/wowtype-core/src/syllable.rs")
-  val output = layout.buildDirectory.file("generated-wowtype-assets/wowtype_lexicon.tsv")
-  val minimumFrequency = providers.environmentVariable("WOWTYPE_MIN_FREQUENCY")
-      .orElse("300").get()
-  inputs.file(source)
-  inputs.file(projectDir.resolve("scripts/make-wowtype-lexicon.py"))
-  inputs.file(syllables)
-  inputs.property("minimumFrequency", minimumFrequency)
-  outputs.file(output)
-  doFirst { output.get().asFile.parentFile.mkdirs() }
+  inputs.file(projectDir.resolve("scripts/prepare-wowtype-data.py"))
+  inputs.dir(projectDir.resolve("vendor/wowtype-data"))
+  outputs.dir(layout.buildDirectory.dir("generated-wowtype-assets"))
   workingDir = projectDir
-  commandLine("python3", "scripts/make-wowtype-lexicon.py", source.absolutePath,
-      syllables.absolutePath,
-      output.get().asFile.absolutePath)
-  environment("WOWTYPE_MIN_FREQUENCY", minimumFrequency)
+  commandLine("python3", "scripts/prepare-wowtype-data.py")
 }
 
 val buildWowtypeAndroid by tasks.registering(Exec::class) {

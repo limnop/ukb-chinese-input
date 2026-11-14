@@ -1,0 +1,351 @@
+# WowType 热词表：近几年 AI、工作、生活、网络上常用、但雾凇词库里词频偏低或没有的词。
+# 格式：拼音（空格分隔）<TAB>词。scripts/make-data.sh 用 tools/add_hotwords.py 合进 lexicon.tsv：
+# 词库里已有的词沿用词库的读音、把词频提到不低于热词词频；没有的按这里的拼音加进去。
+# 这份表是 WowType 自己整理的（MIT），加词时注意多音字的读音。
+da mo xing	大模型
+da yu yan mo xing	大语言模型
+zhi neng ti	智能体
+duo zhi neng ti	多智能体
+ti shi ci	提示词
+ti shi gong cheng	提示工程
+shang xia wen chuang kou	上下文窗口
+chang shang xia wen	长上下文
+wei diao	微调
+yu xun lian	预训练
+hou xun lian	后训练
+qiang hua xue xi	强化学习
+ren lei fan kui	人类反馈
+dui qi	对齐
+huan jue	幻觉
+tui li mo xing	推理模型
+si wei lian	思维链
+duo mo tai	多模态
+wen sheng tu	文生图
+wen sheng shi pin	文生视频
+tu sheng shi pin	图生视频
+sheng cheng shi	生成式
+sheng cheng shi ren gong zhi neng	生成式人工智能
+kuo san mo xing	扩散模型
+xiang liang shu ju ku	向量数据库
+xiang liang jian suo	向量检索
+jian suo zeng qiang sheng cheng	检索增强生成
+zhi shi ku	知识库
+qian ru xiang liang	嵌入向量
+ci yuan	词元
+suan li	算力
+xian ka	显卡
+tui li cheng ben	推理成本
+kai yuan mo xing	开源模型
+bi yuan mo xing	闭源模型
+ben di bu shu	本地部署
+si you hua bu shu	私有化部署
+duan ce mo xing	端侧模型
+zheng liu	蒸馏
+liang hua	量化
+hun he zhuan jia	混合专家
+zhu yi li ji zhi	注意力机制
+han shu diao yong	函数调用
+gong ju diao yong	工具调用
+zhi neng bian cheng	智能编程
+dai ma zhu shou	代码助手
+bian cheng zhu shou	编程助手
+fen wei bian cheng	氛围编程
+ju shen zhi neng	具身智能
+ren xing ji qi ren	人形机器人
+zi dong jia shi	自动驾驶
+tong yong ren gong zhi neng	通用人工智能
+chao ji zhi neng	超级智能
+shu zi ren	数字人
+zhi neng ke fu	智能客服
+yu yin zhu shou	语音助手
+da mo xing ying yong	大模型应用
+mo xing ping ce	模型评测
+ji zhun ce shi	基准测试
+shu ju biao zhu	数据标注
+he cheng shu ju	合成数据
+zhi suan zhong xin	智算中心
+suan li zhong xin	算力中心
+wen xin yi yan	文心一言
+tong yi qian wen	通义千问
+dou bao	豆包
+hun yuan	混元
+zhi pu	智谱
+yue zhi an mian	月之暗面
+shen du qiu suo	深度求索
+ling yi wan wu	零一万物
+bai chuan zhi neng	百川智能
+xun fei xing huo	讯飞星火
+dui qi yi xia	对齐一下
+la qi	拉齐
+fu pan	复盘
+zhua shou	抓手
+bi huan	闭环
+ke li du	颗粒度
+fu neng	赋能
+da tong	打通
+lian lu	链路
+tong dian	痛点
+luo di	落地
+fang fa lun	方法论
+di ceng luo ji	底层逻辑
+ding ceng she ji	顶层设计
+zu he quan	组合拳
+da fa	打法
+xin zhi	心智
+yong hu xin zhi	用户心智
+si yu	私域
+gong yu	公域
+liu liang chi	流量池
+zeng zhang hei ke	增长黑客
+jiang ben zeng xiao	降本增效
+ti xiao	提效
+pai qi	排期
+xu qiu ping shen	需求评审
+ji shu ping shen	技术评审
+hui du fa bu	灰度发布
+quan liang fa bu	全量发布
+shang xian	上线
+hui gun	回滚
+re xiu fu	热修复
+xian shang wen ti	线上问题
+gu zhang fu pan	故障复盘
+zhi ban	值班
+zhou bao	周报
+ri bao	日报
+yue bao	月报
+shu zhi	述职
+jin sheng da bian	晋升答辩
+ji xiao	绩效
+nian zhong jiang	年终奖
+cai yuan	裁员
+bi ye	毕业
+you hua	优化
+yuan cheng ban gong	远程办公
+ju jia ban gong	居家办公
+hun he ban gong	混合办公
+mo yu	摸鱼
+jia ban	加班
+diao xiu	调休
+shuang xiu	双休
+da xiao zhou	大小周
+da ka	打卡
+gong wei	工位
+zhan hui	站会
+li hui	例会
+fei shu	飞书
+ding ding	钉钉
+qi ye wei xin	企业微信
+teng xun hui yi	腾讯会议
+gong xiang wen dang	共享文档
+duo wei biao ge	多维表格
+gan te tu	甘特图
+kan ban	看板
+die dai	迭代
+chong ci	冲刺
+min jie kai fa	敏捷开发
+dai ma ping shen	代码评审
+dan yuan ce shi	单元测试
+ji cheng ce shi	集成测试
+chi xu ji cheng	持续集成
+rong qi hua	容器化
+wei fu wu	微服务
+zhong tai	中台
+qian duan	前端
+hou duan	后端
+quan zhan	全栈
+yun wei	运维
+chan pin jing li	产品经理
+xiang mu jing li	项目经理
+jiao fu	交付
+yan shou	验收
+jia fang	甲方
+yi fang	乙方
+wai bao	外包
+shi xi sheng	实习生
+xiao zhao	校招
+she zhao	社招
+nei tui	内推
+mian shi guan	面试官
+wai mai	外卖
+qi shou	骑手
+kuai di gui	快递柜
+yi zhan	驿站
+cai niao yi zhan	菜鸟驿站
+tuan gou	团购
+pin dan	拼单
+zhi bo dai huo	直播带货
+zhu bo	主播
+zhong cao	种草
+ba cao	拔草
+ce ping	测评
+kai xiang	开箱
+hao wu	好物
+ping ti	平替
+xing jia bi	性价比
+zhi jia bi	质价比
+yu zhi cai	预制菜
+nai cha	奶茶
+ka fei	咖啡
+mei shi	美式
+na tie	拿铁
+sheng ye na tie	生椰拿铁
+qing shi	轻食
+lu ying	露营
+qi xing	骑行
+tu bu	徒步
+fei pan	飞盘
+cheng shi man bu	城市漫步
+te zhong bing lv you	特种兵旅游
+fan xiang lv you	反向旅游
+da ka dian	打卡点
+wang hong dian	网红店
+tan dian	探店
+pai dui	排队
+yu yue	预约
+sao ma	扫码
+jian kang ma	健康码
+he suan	核酸
+xin guan	新冠
+yang le	阳了
+zhuan yin	转阴
+tui shao yao	退烧药
+dian dong che	电动车
+xin neng yuan che	新能源车
+chong dian zhuang	充电桩
+kuai chong	快充
+xu hang	续航
+zi dong bo che	自动泊车
+gao tie	高铁
+di tie	地铁
+gong xiang dan che	共享单车
+wang yue che	网约车
+shun feng che	顺风车
+fang zu	房租
+fang dai	房贷
+ti qian huan dai	提前还贷
+gong ji jin	公积金
+she bao	社保
+ge shui	个税
+yi bao	医保
+xin yong ka	信用卡
+hua bei	花呗
+bai tiao	白条
+yu e bao	余额宝
+li cai	理财
+ji jin	基金
+ding tou	定投
+tang zhuan	躺赚
+fu ye	副业
+zi mei ti	自媒体
+bo zhu	博主
+duan shi pin	短视频
+xiao hong shu	小红书
+dou yin	抖音
+kuai shou	快手
+shi pin hao	视频号
+gong zhong hao	公众号
+peng you quan	朋友圈
+qun liao	群聊
+la qun	拉群
+si liao	私聊
+yu yin tong hua	语音通话
+shi pin tong hua	视频通话
+biao qing bao	表情包
+dan mu	弹幕
+zhui ju	追剧
+shua ju	刷剧
+zong yi	综艺
+yan chang hui	演唱会
+qiang piao	抢票
+huang niu	黄牛
+mang he	盲盒
+shou ban	手办
+chong wu	宠物
+mao mi	猫咪
+gou gou	狗狗
+chan shi guan	铲屎官
+liu gou	遛狗
+lu mao	撸猫
+nei juan	内卷
+tang ping	躺平
+bai lan	摆烂
+po fang	破防
+jue jue zi	绝绝子
+da gong ren	打工人
+wei kuan ren	尾款人
+gan fan ren	干饭人
+fan da zi	饭搭子
+da zi	搭子
+xian yan bao	显眼包
+qing xu jia zhi	情绪价值
+song chi gan	松弛感
+fen wei gan	氛围感
+shang tou	上头
+xia tou	下头
+zhen xiang	真香
+she kong	社恐
+she niu	社牛
+she si	社死
+wo zhen de hui xie	我真的会谢
+na nie	拿捏
+yao yao ling xian	遥遥领先
+tai ku la	泰裤辣
+zun du jia du	尊嘟假嘟
+duo ba an	多巴胺
+mei la de	美拉德
+tou gan	偷感
+ban wei	班味
+ying kong	硬控
+chu pian	出片
+bao zang	宝藏
+xiao zhong	小众
+tian hua ban	天花板
+tian cai	天菜
+tian xuan	天选
+gao guang shi ke	高光时刻
+ming chang mian	名场面
+po quan	破圈
+chu quan	出圈
+ta fang	塌房
+chi gua	吃瓜
+chi gua qun zhong	吃瓜群众
+gua tian	瓜田
+bao liao	爆料
+chong lang	冲浪
+wang shang chong lang	网上冲浪
+jian pan xia	键盘侠
+gang jing	杠精
+ning meng jing	柠檬精
+fan er sai	凡尔赛
+juan wang	卷王
+xue ba	学霸
+xue zha	学渣
+zhong di	种地
+nei hao	内耗
+jing shen nei hao	精神内耗
+fa feng wen xue	发疯文学
+qing xu wen ding	情绪稳定
+dian zi zha cai	电子榨菜
+zui ti	嘴替
+da zi she jiao	搭子社交
+te zhong bing	特种兵
+cui pi da xue sheng	脆皮大学生
+kong yi ji wen xue	孔乙己文学
+bao de	包的
+zhu da yi ge	主打一个
+you bei xiao dao	有被笑到
+hen hen ai le	狠狠爱了
+wu yu zi	无语子
+beng bu zhu le	绷不住了
+beng bu zhu le	蚌埠住了
+xiao bu huo le	笑不活了
+xian yan	显眼
+po da fang	破大防
+bao zi	宝子
+jia ren men	家人们
+jie mei men	姐妹们
+xiong di men	兄弟们
+lao tie	老铁
+ji mei	集美
+xue gao ci ke	雪糕刺客
+ti gong qing xu jia zhi	提供情绪价值
