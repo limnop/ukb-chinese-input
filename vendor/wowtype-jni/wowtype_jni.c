@@ -91,7 +91,8 @@ Java_juloo_keyboard2_staged_WowtypePinyinEngine_nativeInput(
     release_utf(env, input, code);
     return empty;
   }
-  WowtypeCandidates *candidates = wowtype_engine_input(engine, code);
+  WowtypeCandidates *candidates = code[0] == 'v'
+      ? wowtype_calc_candidates(code + 1) : wowtype_engine_input(engine, code);
   if (candidates == NULL) {
     jobjectArray empty = (*env)->NewObjectArray(env, 0, string_class, NULL);
     release_utf(env, input, code);

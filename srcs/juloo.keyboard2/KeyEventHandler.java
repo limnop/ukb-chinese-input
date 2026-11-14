@@ -245,7 +245,8 @@ public final class KeyEventHandler
     /* Keep the dictionary suggestions when the composer has none: the row
        belongs to the dictionary then. The word composed so far is used, not
        the one the editor last reported, which lags a keystroke behind. */
-    if (candidates.size() > 0)
+    if (candidates.size() > 0 || (_composer instanceof Pinyin
+        && ((Pinyin)_composer).is_special_mode()))
       _suggestions.composition_candidates(candidates);
     else
       _suggestions.currently_typed_word(text);
@@ -360,6 +361,15 @@ public final class KeyEventHandler
        a command in the editor in the middle of typing Chinese. This is
        computed before the composition is finished, which empties the
        composer. */
+    if (_composer instanceof Pinyin && ((Pinyin)_composer).is_special_mode()
+        && key.getKind() == KeyValue.Kind.Keyevent && key.getKeyevent() == KeyEvent.KEYCODE_ESCAPE)
+    {
+      _composer.reset();
+      send_composition();
+      update_meta_state(old_mods);
+      _last_action = _next_last_action;
+      return;
+    }
     boolean swallow_enter = _composing_on_keyboard
         && has_composition() && is_enter_key(key);
     /* A long swipe on an arrow key can be reinterpreted by Pointers as a
@@ -404,8 +414,16 @@ public final class KeyEventHandler
     switch (key.getKind())
     {
       case Char:
+        if (_composer instanceof Pinyin && ((Pinyin)_composer).is_v_mode()
+            && key.getChar() == '=')
+        {
+          List<Composer.Candidate> results = _composer.candidates();
+          if (!results.isEmpty()) suggestion_entered(results.get(0));
+          break;
+        }
         int digit = candidate_index_of_digit(key.getChar());
-        if (_composing_on_keyboard && has_composition() && digit >= 0)
+        if (_composing_on_keyboard && has_composition() && digit >= 0
+            && !(_composer instanceof Pinyin && ((Pinyin)_composer).is_v_mode()))
         {
           /* Digits pick a candidate by its position on the page currently
              shown. Ask the row itself so the index can never drift from what
@@ -520,7 +538,8 @@ public final class KeyEventHandler
        to the dictionary, so that words are still suggested while the
        composition is live. */
     List<Composer.Candidate> candidates = _composer.candidates();
-    if (candidates.size() > 0)
+    if (candidates.size() > 0 || (_composer instanceof Pinyin
+        && ((Pinyin)_composer).is_special_mode()))
     {
       _suggestions.composition_candidates(candidates);
       return;

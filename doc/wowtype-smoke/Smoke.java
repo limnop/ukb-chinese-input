@@ -63,6 +63,21 @@ public class Smoke extends Instrumentation {
     if(cs.isEmpty())throw new AssertionError("Missing sentence: "+code);
     log.append(code+" top="+cs.get(0).text+" ms="+(System.nanoTime()-begin)/1000000+"\n");
    }
+   String[][] special={{"umumu","林"},{"uriyue","明"},{"uhuohuohuo","焱"},
+       {"v1+2*3","7"},{"v(1+2)*3","9"},{"v123.45","壹佰贰拾叁元肆角伍分"}};
+   String specialHistory=readFile(history);
+   for(String[] sample:special){
+    p=new Pinyin();if(!p.type(sample[0]))throw new AssertionError("Special input rejected");
+    List<Composer.Candidate> cs=p.candidates();
+    Composer.Candidate selected=null;
+    for(Composer.Candidate c:cs) if(c.text.equals(sample[1])){selected=c;break;}
+    if(selected==null || (sample[0].startsWith("v") && selected!=cs.get(0)))throw new AssertionError("Special candidate mismatch "+sample[0]);
+    if(!p.accept(selected).isEmpty())throw new AssertionError("Special commit retained input");
+    log.append(sample[0]+" -> "+sample[1]+"\n");
+   }
+   if(!specialHistory.equals(readFile(history)))throw new AssertionError("Special mode polluted pinyin history");
+   p=new Pinyin();p.type("v1/0");
+   if(!p.candidates().get(0).text.equals("1/0"))throw new AssertionError("Invalid arithmetic should remain literal");
    result.putString("stream",log+"PASS\n");finish(-1,result);
   } catch(Throwable e){result.putString("stream",log+"FAIL "+e);finish(0,result);}
  }
