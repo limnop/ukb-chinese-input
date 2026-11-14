@@ -29,7 +29,7 @@ android {
       manifest.srcFile("AndroidManifest.xml")
       java.srcDirs("srcs/juloo.keyboard2", "vendor/cdict/java/juloo.cdict")
       res.srcDirs("res", "build/generated-resources")
-      assets.srcDirs("assets")
+      assets.srcDirs("assets", "build/generated-wowtype-assets")
     }
 
     named("test") {
@@ -101,6 +101,40 @@ android {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
   }
+}
+
+val generateWowtypeLexicon by tasks.registering(Exec::class) {
+  val source = projectDir.resolve("srcs/chinese/data/zh_pinyin.dat")
+  val syllables = projectDir.resolve("vendor/wowtype-core/src/syllable.rs")
+  val output = layout.buildDirectory.file("generated-wowtype-assets/wowtype_lexicon.tsv")
+  val minimumFrequency = providers.environmentVariable("WOWTYPE_MIN_FREQUENCY")
+      .orElse("300").get()
+  inputs.file(source)
+  inputs.file(projectDir.resolve("scripts/make-wowtype-lexicon.py"))
+  inputs.file(syllables)
+  inputs.property("minimumFrequency", minimumFrequency)
+  outputs.file(output)
+  doFirst { output.get().asFile.parentFile.mkdirs() }
+  workingDir = projectDir
+  commandLine("python3", "scripts/make-wowtype-lexicon.py", source.absolutePath,
+      syllables.absolutePath,
+      output.get().asFile.absolutePath)
+  environment("WOWTYPE_MIN_FREQUENCY", minimumFrequency)
+}
+
+val buildWowtypeAndroid by tasks.registering(Exec::class) {
+  val outputsByAbi = listOf("aarch64-linux-android", "armv7-linux-androideabi",
+      "i686-linux-android", "x86_64-linux-android").map {
+    layout.buildDirectory.file("wowtype-rust/$it/release/libwowtype_core.a")
+  }
+  outputs.files(outputsByAbi)
+  inputs.files(fileTree(projectDir.resolve("vendor/wowtype-core")) {
+    exclude("target/**")
+  })
+  inputs.file(projectDir.resolve("scripts/build-wowtype-android.sh"))
+  workingDir = projectDir
+  environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+  commandLine("bash", "scripts/build-wowtype-android.sh")
 }
 
 
@@ -196,7 +230,8 @@ val copyLayoutDefinitions by tasks.registering(Copy::class) {
 }
 
 tasks.named("preBuild") {
-  dependsOn(initDebugKeystore, copyRawQwertyUS, copyLayoutDefinitions)
+  dependsOn(initDebugKeystore, copyRawQwertyUS, copyLayoutDefinitions,
+      generateWowtypeLexicon, buildWowtypeAndroid)
   // 'mustRunAfter' defines ordering between tasks (which is required by
   // Gradle) but doesn't create a dependency. These rules update files that are
   // checked in the repository that don't need to be updated during regular

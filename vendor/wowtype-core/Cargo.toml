@@ -1,0 +1,19 @@
+[package]
+name = "wowtype-core-android"
+version = "0.3.12"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "wowtype_core"
+crate-type = ["staticlib"]
+
+[dependencies]
+anyhow = "1.0"
+libc = "0.2"
+serde_json = "1"
+
+[features]
+default = []
+voice = []

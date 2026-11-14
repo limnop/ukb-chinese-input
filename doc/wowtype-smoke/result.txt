@@ -1,0 +1,8 @@
+source=juloo.keyboard2.staged.WowtypePinyinEngine$NativeEngine
+nihao 2ms: 你好/0 拟好/0 尼好/0 你/2 尼/2
+zhongguo 1ms: 中国/0 种过/0 中过/0 众过/0 中/5
+xi'an 0ms: 西安/0 西岸/0 锡安/0 洗按/0 西/3
+woaini 1ms: 我爱你/0 握爱你/0 窝爱你/0 我爱/4 我/2
+nihap 1ms: 你好/0 拟好/0 你哈皮/0 你/2 尼/2
+partial=你好 remaining=zhongguo
+PASS

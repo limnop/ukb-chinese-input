@@ -8,6 +8,7 @@
 .DS_Store
 /captures
 /build
+/vendor/wowtype-core/target
 # Built APKs kept outside the history: rebuild instead
 /apks
 # Directory _build is not used anymore

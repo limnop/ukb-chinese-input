@@ -631,6 +631,16 @@ public final class KeyEventHandler
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
       return;
+    if (_composer instanceof Pinyin && !has_composition())
+    {
+      CharSequence before = null;
+      if (!_recv.is_password_editor())
+      {
+        try { before = conn.getTextBeforeCursor(64, 0); }
+        catch (RuntimeException e) { /* Some editors reject surrounding-text queries. */ }
+      }
+      _composer.set_context(before == null ? "" : before.toString());
+    }
     if (_composer.type(text))
     {
       send_composition();
@@ -1007,6 +1017,7 @@ public final class KeyEventHandler
     public void set_compose_pending(boolean pending);
     public void selection_state_changed(boolean selection_is_ongoing);
     public InputConnection getCurrentInputConnection();
+    public default boolean is_password_editor() { return false; }
     public Handler getHandler();
   }
 

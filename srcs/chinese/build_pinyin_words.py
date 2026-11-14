@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build assets/zh_pinyin.dat from RIME .dict.yaml word lists.
+"""Build srcs/chinese/data/zh_pinyin.dat from RIME .dict.yaml word lists.
 
 Several sources are merged: rime-ice's cn_dicts, the "unexpect-max"
 luna_pinyin dictionary and the wanxiang dictionaries. Source lines are
@@ -18,8 +18,7 @@ dropped: they are mostly wrong readings of polyphonic characters, and they
 would otherwise bury the words people actually type.
 
 Output lines are `code<TAB>score<TAB>text`, sorted by code and then by
-descending score. That order lets ChineseWordDictionary binary-search the line
-offsets and read a whole prefix range without building a hash table. At most
+descending score. The WowType build converter reads this intermediate source format. At most
 [MAX_PER_CODE] words are kept for one code; a row of candidates is never
 longer than a few dozen anyway.
 

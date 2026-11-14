@@ -179,6 +179,10 @@
     <string name="dictionaries_download_failed">下载失败: 请授予网络访问权限</string>
     <string name="pref_split_layout_wide">在宽屏上</string>
     <string name="pref_category_suggestions">建议</string>
+    <string name="pref_pinyin_typo_correction_title">纠正拼音输入错误</string>
+    <string name="pref_pinyin_typo_correction_summary">允许纠正常见的邻键和字母换位错误</string>
+    <string name="pref_pinyin_fuzzy_title">模糊音</string>
+    <string name="pref_pinyin_fuzzy_summary">匹配 z/zh、an/ang 等常见发音组合</string>
     <string name="pref_theme_e_everforestlight">Everforest Light</string>
     <string name="pref_theme_e_cobalt">钴蓝</string>
     <string name="pref_portrait_unfolded">竖屏展开模式</string>

@@ -239,3 +239,23 @@ Compose sequences are made of several steps. For example, the sequence
   }
 }
 ```
+
+## Building the WowType pinyin engine
+
+Android builds also require Python 3 and `rustup` with the stable Rust toolchain.
+The Gradle build invokes `scripts/build-wowtype-android.sh` using its configured
+Android NDK and installs the four Android Rust targets. Cargo dependencies and
+Rust targets require network access on the first build. The vendored core and
+`Cargo.lock` are committed; the sibling WowType checkout is not required.
+
+`srcs/chinese/data/zh_pinyin.dat` is build input only. Gradle converts it to
+`wowtype_lexicon.tsv` in generated assets. Do not add the original source file
+back to APK assets. Set `WOWTYPE_MIN_FREQUENCY` to override the default 300 cutoff.
+
+Run `./gradlew testDebugUnitTest assembleDebug` for JVM contract tests and the
+APK. With one running emulator, `scripts/test-wowtype-emulator.sh` installs the
+debug APK and a test instrumentation package and tests the actual JNI/Rust path.
+It requires Android SDK Platform 35 and Build Tools 35.0.0, and configures the
+debug app's layout to Pinyin for subsequent UI checks. It learns sample words in
+the debug app's private history. Use a disposable emulator for clean-history
+comparisons; these smoke timings are not a performance benchmark.

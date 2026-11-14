@@ -34,6 +34,10 @@
     <string name="pref_extra_keys_custom">新增自訂按鍵</string>
     <string name="pref_extra_keys_internal">選取要新增至鍵盤的按鍵</string>
     <string name="pref_category_suggestions">建議</string>
+    <string name="pref_pinyin_typo_correction_title">修正拼音輸入錯誤</string>
+    <string name="pref_pinyin_typo_correction_summary">允許修正常見的鄰鍵與字母換位錯誤</string>
+    <string name="pref_pinyin_fuzzy_title">模糊音</string>
+    <string name="pref_pinyin_fuzzy_summary">匹配 z/zh、an/ang 等常見發音組合</string>
     <string name="pref_suggestions_title">建議</string>
     <string name="pref_suggestions_summary">啟用自動選字與拼字檢查</string>
     <string name="pref_space_bar_auto_complete_title">以空白鍵自動選字</string>

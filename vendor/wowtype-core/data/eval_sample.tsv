@@ -1,0 +1,15 @@
+# 排序评测用例（配合 core/data/demo_lexicon.tsv 使用）
+# 输入<TAB>期望（多个可接受答案用 | 分隔）
+de	的
+shi	是
+ni	你
+hao	好
+nihao	你好
+wo	我
+zhongguo	中国
+sj	世界
+zhongguo	中国
+xian	先
+huar	花儿
+shijie	世界
+zhongguo	中国|中国
