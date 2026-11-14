@@ -26,7 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import juloo.cdict.Cdict;
-import juloo.keyboard2.dict.ChineseWordDictionary;
+import juloo.keyboard2.staged.WowtypePinyinEngine;
 import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.dict.DictionariesActivity;
 import juloo.keyboard2.dict.DictionarySwitcher;
@@ -150,7 +150,7 @@ public class Keyboard2 extends InputMethodService
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
     _dictionaries.install_bundled_zh();
-    ChineseWordDictionary.preload(this);
+    WowtypePinyinEngine.preload(this);
     Config.initGlobalConfig(prefs, getResources(),
         _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
@@ -674,6 +674,11 @@ public class Keyboard2 extends InputMethodService
     public InputConnection getCurrentInputConnection()
     {
       return Keyboard2.this.getCurrentInputConnection();
+    }
+
+    public boolean is_password_editor()
+    {
+      return _config != null && _config.editor_config.password_editor;
     }
 
     public Handler getHandler()

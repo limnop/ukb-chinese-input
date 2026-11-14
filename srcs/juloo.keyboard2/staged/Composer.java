@@ -94,6 +94,9 @@ public interface Composer
       must not claim that view unless it has candidates for it. */
   public List<Candidate> candidates();
 
+  /** Text immediately before the composition, for context-aware composers. */
+  public default void set_context(String text) {}
+
   /** Forget the composition without committing it. */
   public void reset();
 

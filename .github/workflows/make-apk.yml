@@ -34,6 +34,9 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:

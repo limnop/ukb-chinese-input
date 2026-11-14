@@ -6,9 +6,9 @@
 
 ### 本分支功能
 
-- 支持拼音和注音输入、中文词语候选、音节分段及候选选择优化。
+- 拼音输入由 WowType Rust 引擎提供整句候选、纠错、模糊音和本地学习；注音输入保留原有实现。
 - 在文本密码框中自动切换到英文布局，并在底栏提供快速收起按钮。
-- 内置中文词库；词库来源和许可见 [`srcs/chinese/README.md`](srcs/chinese/README.md)。
+- 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - 剪贴板默认持久保存最近 70 条文本；键盘打开时自动轮询远端更新，也可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并提供预览和去重处理。密码框期间暂停自动轮询。
 - 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和随应用提供的服务器证书。
 
@@ -22,9 +22,9 @@ This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboa
 
 ### Features in this fork
 
-- Pinyin and Zhuyin input with Chinese word candidates, syllable segmentation, and candidate-selection improvements.
+- WowType Rust pinyin decoding with sentence candidates, typo correction, fuzzy pinyin, and local learning. Zhuyin retains its existing implementation.
 - Password text fields switch to an English layout automatically, and the bottom row has a quick-hide button.
-- A bundled Chinese word dictionary. Its sources and licenses are documented in [`srcs/chinese/README.md`](srcs/chinese/README.md).
+- A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.
 - Clipboard history persistently keeps the latest 70 text entries by default. While the keyboard is open, it polls the configured SyncClipboard server for remote updates; users can also manually upload and download text, images, and files, with previews and duplicate-transfer handling. Polling pauses in password fields.
 - Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. The connection uses HTTPS and a certificate bundled for the configured server.
 

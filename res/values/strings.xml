@@ -38,6 +38,10 @@
     <string name="pref_suggestions_summary">Enable word completion and spell checking</string>
     <string name="pref_space_bar_auto_complete_title">Autocomplete with the space bar</string>
     <string name="pref_space_bar_auto_complete_summary">Enter the best suggestion by pressing space</string>
+    <string name="pref_pinyin_typo_correction_title">Correct mistyped pinyin</string>
+    <string name="pref_pinyin_typo_correction_summary">Allow nearby-key and transposed-key corrections</string>
+    <string name="pref_pinyin_fuzzy_title">Fuzzy pinyin</string>
+    <string name="pref_pinyin_fuzzy_summary">Match common pronunciation pairs such as z/zh and an/ang</string>
     <string name="pref_category_typing">Typing</string>
     <string name="pref_swipe_dist_title">Swiping distance</string>
     <string name="pref_swipe_dist_summary">Distance of characters in the corners of the keys (%s)</string>
