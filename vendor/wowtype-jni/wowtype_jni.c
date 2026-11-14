@@ -5,20 +5,52 @@
 #include <string.h>
 #include "wowtype_core.h"
 
+/* JNI modified UTF-8 cannot represent supplementary Han characters or emoji.
+ * Use Java's standard UTF-8 codec at both boundaries. */
 static const char *get_utf(JNIEnv *env, jstring value)
 {
-  return value == NULL ? NULL : (*env)->GetStringUTFChars(env, value, NULL);
+  if (value == NULL) return NULL;
+  jclass cls = (*env)->FindClass(env, "java/lang/String");
+  jmethodID method = (*env)->GetMethodID(env, cls, "getBytes", "(Ljava/lang/String;)[B");
+  jstring encoding = (*env)->NewStringUTF(env, "UTF-8");
+  jbyteArray bytes = (jbyteArray)(*env)->CallObjectMethod(env, value, method, encoding);
+  char *result = NULL;
+  if (bytes != NULL) {
+    jsize len = (*env)->GetArrayLength(env, bytes);
+    result = malloc((size_t)len + 1);
+    if (result != NULL) {
+      (*env)->GetByteArrayRegion(env, bytes, 0, len, (jbyte *)result);
+      result[len] = 0;
+    }
+    (*env)->DeleteLocalRef(env, bytes);
+  }
+  (*env)->DeleteLocalRef(env, encoding);
+  (*env)->DeleteLocalRef(env, cls);
+  return result;
 }
-
 static void release_utf(JNIEnv *env, jstring value, const char *text)
 {
-  if (value != NULL && text != NULL)
-    (*env)->ReleaseStringUTFChars(env, value, text);
+  (void)env; (void)value; free((void *)text);
+}
+static jstring new_utf8(JNIEnv *env, const char *text)
+{
+  jsize len = (jsize)strlen(text);
+  jbyteArray bytes = (*env)->NewByteArray(env, len);
+  if (bytes == NULL) return NULL;
+  (*env)->SetByteArrayRegion(env, bytes, 0, len, (const jbyte *)text);
+  jclass cls = (*env)->FindClass(env, "java/lang/String");
+  jmethodID constructor = (*env)->GetMethodID(env, cls, "<init>", "([BLjava/lang/String;)V");
+  jstring encoding = (*env)->NewStringUTF(env, "UTF-8");
+  jstring result = (jstring)(*env)->NewObject(env, cls, constructor, bytes, encoding);
+  (*env)->DeleteLocalRef(env, bytes);
+  (*env)->DeleteLocalRef(env, encoding);
+  (*env)->DeleteLocalRef(env, cls);
+  return result;
 }
 
 JNIEXPORT jlong JNICALL
 Java_juloo_keyboard2_staged_WowtypePinyinEngine_nativeNew(
-    JNIEnv *env, jclass cls, jstring lexicon_path, jstring history_path,
+    JNIEnv *env, jclass cls, jstring lexicon_path, jstring model_path, jstring history_path,
     jstring user_dict_path)
 {
   (void)cls;
@@ -27,9 +59,11 @@ Java_juloo_keyboard2_staged_WowtypePinyinEngine_nativeNew(
   const char *user_dict = get_utf(env, user_dict_path);
   if (lexicon == NULL)
     return 0;
-  WowtypeEngineHandle *engine = wowtype_engine_new(lexicon, NULL);
+  const char *model = get_utf(env, model_path);
+  WowtypeEngineHandle *engine = wowtype_engine_new(lexicon, model);
+  release_utf(env, model_path, model);
   if (engine != NULL) {
-    (void)wowtype_engine_set_max_candidates(engine, 100);
+    (void)wowtype_engine_set_max_candidates(engine, 1000);
     (void)wowtype_engine_set_beam_size(engine, 20);
     if (history != NULL) (void)wowtype_engine_load_history(engine, history);
     if (user_dict != NULL) (void)wowtype_engine_load_user_dict(engine, user_dict);
@@ -78,7 +112,7 @@ Java_juloo_keyboard2_staged_WowtypePinyinEngine_nativeInput(
     memcpy(record, prefix, prefix_len);
     if (text_len > 0) memcpy(record + prefix_len, text, text_len);
     record[prefix_len + text_len] = '\0';
-    jstring item = (*env)->NewStringUTF(env, record);
+    jstring item = new_utf8(env, record);
     if (item != NULL) {
       (*env)->SetObjectArrayElement(env, result, (jsize)i, item);
       (*env)->DeleteLocalRef(env, item);

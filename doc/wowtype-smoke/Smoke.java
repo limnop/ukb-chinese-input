@@ -5,15 +5,27 @@ import juloo.keyboard2.staged.*;
 import java.util.*;
 public class Smoke extends Instrumentation {
  public void onCreate(Bundle b) { super.onCreate(b); start(); }
+ private String readFile(java.io.File file) throws java.io.IOException {
+  if(!file.exists())return "";
+  try(java.io.FileInputStream in=new java.io.FileInputStream(file);java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()) {
+   byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");
+  }
+ }
  public void onStart() {
   Bundle result=new Bundle(); StringBuilder log=new StringBuilder();
   try {
    Pinyin.engine=null;
    Pinyin empty=new Pinyin(); empty.type("nihao");
    if(!empty.candidates().isEmpty()) throw new AssertionError("Legacy candidates still active");
+   java.io.File history=new java.io.File(getTargetContext().getFilesDir(), "wowtype/history.tsv");
+   String beforeHistory=readFile(history);
+   long started=System.nanoTime();
    WowtypePinyinEngine.preload(getTargetContext());
    for(int i=0; i<600 && Pinyin.engine==null; i++) Thread.sleep(100);
    if(Pinyin.engine==null) throw new AssertionError("Native initialization failed");
+   if(!beforeHistory.equals(readFile(history))) throw new AssertionError("Data update changed learning history");
+   log.append("history_preserved=true\n");
+   log.append("initialization_ms="+(System.nanoTime()-started)/1000000+"\n");
    log.append("source="+Pinyin.engine.getClass().getName()+"\n");
    android.content.SharedPreferences prefs = juloo.keyboard2.DirectBootAwarePreferences.get_shared_preferences(getTargetContext());
    juloo.keyboard2.Config.migrate(prefs);
@@ -37,6 +49,20 @@ public class Smoke extends Instrumentation {
    for(Composer.Candidate c:p.candidates()) if(c.consumed>0){String rest=p.accept(c); if(rest.isEmpty()||p.candidates().isEmpty())throw new AssertionError("Partial commit failed");partial=true;log.append("partial="+c.text+" remaining="+rest+"\n");break;}
    if(!partial) throw new AssertionError("No partial candidate");
    p=new Pinyin();p.type("nihao");p.backspace();if(!p.text().equals("niha")||p.candidates().isEmpty())throw new AssertionError("Backspace failed");
+   p=new Pinyin();p.set_context("😀今天");p.type("ji");
+   long queryStart=System.nanoTime();
+   List<Composer.Candidate> expanded=p.candidates();
+   boolean supplementary=false;
+   for(Composer.Candidate c:expanded) if(c.text.equals("𬶭")) supplementary=true;
+   if(!supplementary) throw new AssertionError("Supplementary Han candidate lost in JNI");
+   if(expanded.size()<=100) throw new AssertionError("Long-tail candidates still capped at 100");
+   log.append("ji candidates="+expanded.size()+" supplementary=𬶭 query_ms="+(System.nanoTime()-queryStart)/1000000+"\n");
+   String[] sentences={"jintiantianqihenhao","woxiangqubeijing","zhonghuarenmingongheguo"};
+   for(String code:sentences){
+    p=new Pinyin();p.type(code);long begin=System.nanoTime();List<Composer.Candidate> cs=p.candidates();
+    if(cs.isEmpty())throw new AssertionError("Missing sentence: "+code);
+    log.append(code+" top="+cs.get(0).text+" ms="+(System.nanoTime()-begin)/1000000+"\n");
+   }
    result.putString("stream",log+"PASS\n");finish(-1,result);
   } catch(Throwable e){result.putString("stream",log+"FAIL "+e);finish(0,result);}
  }

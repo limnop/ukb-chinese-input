@@ -20,7 +20,7 @@ javac -cp "$android_jar:build/intermediates/javac/debug/compileDebugJavaWithJava
 "$build_tools/apksigner" sign --ks "${DEBUG_KEYSTORE:-debug.keystore}" \
   --ks-key-alias "${DEBUG_KEY_ALIAS:-debug}" \
   --ks-pass "pass:${DEBUG_KEYSTORE_PASSWORD:-debug0}" "$test_dir/test.apk"
-adb -e install -r build/outputs/apk/debug/Unexpected-Keyboard-debug.apk
-adb -e install -r "$test_dir/test.apk"
-adb -e shell am instrument -w smoke.wowtype/smoke.Smoke | tee "$test_dir/result.txt"
+adb -s "${WOWTYPE_TEST_DEVICE:-emulator-5554}" install -r build/outputs/apk/debug/Unexpected-Keyboard-debug.apk
+adb -s "${WOWTYPE_TEST_DEVICE:-emulator-5554}" install -r "$test_dir/test.apk"
+adb -s "${WOWTYPE_TEST_DEVICE:-emulator-5554}" shell am instrument -w smoke.wowtype/smoke.Smoke | tee "$test_dir/result.txt"
 grep -qx PASS "$test_dir/result.txt"
