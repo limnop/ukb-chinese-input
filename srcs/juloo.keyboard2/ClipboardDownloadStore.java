@@ -105,9 +105,12 @@ final class ClipboardDownloadStore
       {
         cursor = context.getContentResolver().query(collection,
             new String[]{ MediaStore.MediaColumns._ID },
-            MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
+            /* MediaStore providers may uniquify a colliding name by adding
+               " (1)", " (2)", etc. Treat those names as the same
+               content-addressed file so polling can find the first copy. */
+            MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ? AND "
               + MediaStore.MediaColumns.RELATIVE_PATH + "=?",
-            new String[]{ name, RELATIVE_PATH }, null);
+            new String[]{ name + "%", RELATIVE_PATH }, null);
         if (cursor != null && cursor.moveToFirst())
           return ContentUris.withAppendedId(collection,
               cursor.getLong(0));
