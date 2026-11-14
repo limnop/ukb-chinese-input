@@ -109,4 +109,33 @@ public class PinyinTest
     assertEquals("", decoder.context);
     assertEquals("hao", decoder.input);
   }
+  @Test public void vModeKeepsExpressionDigitsAndOperators()
+  {
+    Pinyin p = typed("v12.5*(3-1)");
+    assertTrue(p.is_v_mode());
+    assertTrue(p.is_special_mode());
+    p.candidates();
+    assertEquals("v12.5*(3-1)", decoder.input);
+    assertEquals("", p.accept(new Composer.Candidate("25")));
+    assertNull(decoder.learnedWord);
+    assertFalse(p.is_special_mode());
+    assertFalse(typed("nv").is_v_mode());
+    assertFalse(typed("ni").type("2"));
+  }
+  @Test public void componentSelectionsDoNotLearnComponentCodeAsPinyin()
+  {
+    Pinyin p = typed("umumu");
+    assertTrue(p.is_special_mode());
+    assertFalse(p.is_v_mode());
+    p.accept(new Composer.Candidate("林"));
+    assertNull(decoder.learnedWord);
+    assertEquals("",p.text());
+  }
+  @Test public void modesCanBeDeletedAndReset()
+  {
+    Pinyin p = typed("v1+");
+    assertTrue(p.backspace());assertEquals("v1",p.text());
+    p.reset();assertFalse(p.is_special_mode());
+    p.type("u");assertTrue(p.backspace());assertFalse(p.is_special_mode());
+  }
 }

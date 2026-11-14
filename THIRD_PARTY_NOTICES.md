@@ -16,6 +16,9 @@ The default WowType lexicon is built from
 [rime-ice](https://github.com/iDvel/rime-ice) revision
 `927e1cf1d3eeb9bf4be85e3f684dba4dd485b6f6`, under GPL-3.0. It includes the
 41448 supplementary character table and WowType's hotword additions.
+U-mode component lookup uses `radical_pinyin.dict.yaml` from the same pinned
+rime-ice tree; its header credits [rime_radical_pinyin](https://github.com/mirtlecn/rime_radical_pinyin).
+The generated table preserves component readings and frequencies.
 Converters and hotwords come from the WowType core snapshot named above.
 The rime-ice license and exact data attribution are included in APK assets
 as `wowtype-data-LICENSE.txt` and `wowtype-data-SOURCE.txt`.

@@ -19,6 +19,7 @@ public final class WowtypePinyinEngine
   private static String _history_path;
   private static String _user_dict_path;
   private static SharedPreferences _prefs;
+  private static ComponentLookup _components;
   private static String _last_context;
   private static boolean _configured = false;
   private static boolean _last_fuzzy;
@@ -69,6 +70,8 @@ public final class WowtypePinyinEngine
               _user_dict_path = new File(data_dir, "user.tsv").getAbsolutePath();
               _prefs = juloo.keyboard2.DirectBootAwarePreferences
                   .get_shared_preferences(app);
+              _components = new ComponentLookup(new java.io.InputStreamReader(
+                  app.getAssets().open("wowtype_components.tsv"), "UTF-8"));
               long handle = nativeNew(lexicon.getAbsolutePath(), model.getAbsolutePath(),
                   _history_path, _user_dict_path);
               if (handle != 0)
@@ -139,7 +142,7 @@ public final class WowtypePinyinEngine
       if (tab < 0 || tab + 1 >= row.length())
         continue;
       String text = row.substring(tab + 1);
-      if (!containsHan(text))
+      if (!code.startsWith("v") && !containsHan(text))
         continue;
       try
       {
@@ -211,6 +214,7 @@ public final class WowtypePinyinEngine
   {
     @Override public List<Composer.Candidate> candidates(String input, String context)
     {
+      if (input.startsWith("u")) return _components.candidates(input.substring(1));
       return WowtypePinyinEngine.candidates(input, context, 1000);
     }
 

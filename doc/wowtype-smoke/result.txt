@@ -1,14 +1,20 @@
 history_preserved=true
-initialization_ms=5008
+initialization_ms=2313
 source=juloo.keyboard2.staged.WowtypePinyinEngine$NativeEngine
 nihao 4ms: 你好/0 倪豪/0 拟好/0 你/2 尼/2
-zhongguo 2ms: 中国/0 重国/0 中/5 种/5 重/5
+zhongguo 3ms: 中国/0 重国/0 中/5 种/5 重/5
 xi'an 2ms: 西安/0 喜安/0 西岸/0 锡安/0 西/3
 woaini 2ms: 我爱你/0 我碍你/0 喔爱你/0 我爱/4 我/2
 nihap 2ms: 你好/0 倪豪/0 拟好/0 你/2 尼/2
 partial=你好 remaining=zhongguo
-ji candidates=817 supplementary=𬶭 query_ms=3
-jintiantianqihenhao top=今天天气很好 ms=7
+ji candidates=817 supplementary=𬶭 query_ms=4
+jintiantianqihenhao top=今天天气很好 ms=8
 woxiangqubeijing top=我想去北京 ms=6
-zhonghuarenmingongheguo top=中华人民共和国 ms=6
+zhonghuarenmingongheguo top=中华人民共和国 ms=8
+umumu -> 林
+uriyue -> 明
+uhuohuohuo -> 焱
+v1+2*3 -> 7
+v(1+2)*3 -> 9
+v123.45 -> 壹佰贰拾叁元肆角伍分
 PASS

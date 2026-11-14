@@ -23,11 +23,14 @@ public final class Pinyin implements Composer
   @Override public boolean type(String text)
   {
     if (text.isEmpty()) return false;
+    String proposed = new StringBuilder(_keys).insert(_cursor, text).toString();
+    boolean calculator = proposed.charAt(0) == 'v' || proposed.charAt(0) == 'V';
     for (int i = 0; i < text.length(); i++)
     {
       char c = text.charAt(i);
       if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-          || c == '\'' || c == '\u2019')) return false;
+          || c == '\'' || c == '\u2019'
+          || (calculator && "0123456789+-*/%^.()×÷".indexOf(c) >= 0))) return false;
     }
     for (int i = 0; i < text.length(); i++)
     {
@@ -35,6 +38,12 @@ public final class Pinyin implements Composer
       _keys.insert(_cursor++, c == '\u2019' ? '\'' : Character.toLowerCase(c));
     }
     return true;
+  }
+
+  public boolean is_v_mode() { return _keys.length() > 0 && _keys.charAt(0) == 'v'; }
+  public boolean is_special_mode()
+  {
+    return _keys.length() > 0 && (_keys.charAt(0) == 'u' || _keys.charAt(0) == 'v');
   }
 
   @Override public boolean backspace()
@@ -81,7 +90,7 @@ public final class Pinyin implements Composer
     int consumed = candidate.consumed <= 0 ? _keys.length()
         : Math.min(candidate.consumed, _keys.length());
     Engine current = engine;
-    if (current != null && consumed > 0)
+    if (current != null && consumed > 0 && !is_special_mode())
       current.record_selection(_keys.substring(0, consumed), candidate.text, _context);
     _context = context_tail(_context + candidate.text);
     _keys.delete(0, consumed);
