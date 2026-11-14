@@ -58,7 +58,6 @@ final class ClipboardSyncClient
   static final String PREF_DOWN_TEXT_HASHES = "downloaded_text_hashes";
   static final String PREF_UP_FILE_HASHES = "uploaded_file_hashes";
   static final String PREF_DOWN_FILE_HASHES = "downloaded_file_hashes";
-  private static final int HASH_HISTORY_LIMIT = 128;
   static final String DOWNLOAD_DIR = "Download/UKB-Sync/";
   private static final int TIMEOUT_MS = 15000;
   private static final int MAX_TEXT_BYTES = 4 * 1024 * 1024;
@@ -245,7 +244,8 @@ final class ClipboardSyncClient
       copy_bounded(in, new FileOutputStream(temp), MAX_FILE_BYTES);
       transfer_hash = sha256(temp);
       if (has_hash(account, PREF_DOWN_FILE_HASHES, transfer_hash)
-          || has_hash(account, PREF_UP_FILE_HASHES, transfer_hash))
+          || (has_hash(account, PREF_UP_FILE_HASHES, transfer_hash)
+              && remote_file_exists(account, name)))
         return result("文件内容未变化，已跳过重复同步", null, null, null,
             null, true);
       put_file(account, name, temp);
@@ -438,6 +438,24 @@ final class ClipboardSyncClient
       OutputStream out = conn.getOutputStream();
       copy_bounded(in, out, MAX_FILE_BYTES);
       require_success(conn);
+    }
+    finally { conn.disconnect(); }
+  }
+
+  private static boolean remote_file_exists(Account account, String name)
+      throws Exception
+  {
+    HttpURLConnection conn = open(account, endpoint(account,
+          "file/" + encode_path_segment(name)), "HEAD");
+    try
+    {
+      int status = conn.getResponseCode();
+      if (status == 404 || status == 410)
+        return false;
+      if (status >= 200 && status < 300)
+        return true;
+      /* Some SyncClipboard-compatible servers do not implement HEAD. */
+      return false;
     }
     finally { conn.disconnect(); }
   }
@@ -642,14 +660,14 @@ final class ClipboardSyncClient
   {
     Set<String> values = new HashSet<String>(account.prefs.getStringSet(key,
           java.util.Collections.<String>emptySet()));
-    if (values.contains(hash))
+    boolean file_hashes = PREF_UP_FILE_HASHES.equals(key)
+        || PREF_DOWN_FILE_HASHES.equals(key);
+    if (values.contains(hash) && (!file_hashes || values.size() == 1))
       return;
+    /* File sync only needs the latest content identity on each side. */
+    if (file_hashes)
+      values.clear();
     values.add(hash);
-    while (values.size() > HASH_HISTORY_LIMIT)
-    {
-      String first = values.iterator().next();
-      values.remove(first);
-    }
     account.prefs.edit().putStringSet(key, values).apply();
   }
 

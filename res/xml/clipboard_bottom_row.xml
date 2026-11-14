@@ -2,10 +2,10 @@
 <!-- The bottom row used in the clipboard history pane. -->
 <keyboard bottom_row="false">
   <row height="0.95">
-    <key width="0.75" role="action" key0="hide_self"/>
     <key role="action" key0="switch_back_clipboard"/>
     <key width="2.25" role="space_bar" key0="space" key5="cursor_left" key6="cursor_right"/>
     <key role="action" key0="backspace" key2="delete"/>
     <key role="action" key0="enter" key2="action"/>
+    <key width="0.75" role="action" key0="hide_self"/>
   </row>
 </keyboard>
