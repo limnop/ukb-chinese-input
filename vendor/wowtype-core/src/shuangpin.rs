@@ -502,9 +502,17 @@ fn table(scheme: Scheme) -> &'static HashMap<[u8; 2], Vec<&'static str>> {
                 }
             }
         }
+        // 重码时冷门读音排后面：SYLLABLES 按字母序，lo（只有「咯」）会排在 luo 前面，
+        // 编辑区就显示成 lo'ji（#226）。候选不受影响，各读法的候选按分数合并
+        for list in map.values_mut() {
+            list.sort_by_key(|s| RARE_READINGS.contains(s));
+        }
         map
     })
 }
+
+/// 和别的音节撞码时排在后面的冷门读音。
+const RARE_READINGS: &[&str] = &["lo"];
 
 /// 两键对应的所有音节（个别方案有少量重码）。
 pub fn decode_all(scheme: Scheme, a: u8, b: u8) -> &'static [&'static str] {
@@ -764,5 +772,21 @@ mod tests {
         assert_eq!(d.raw_bytes(6, 5), 3);
         assert_eq!(d.raw_bytes(9, 5), 5);
         assert_eq!(d.raw_bytes(2, 5), 0);
+    }
+
+    #[test]
+    fn common_reading_of_colliding_keys_comes_first() {
+        // 各方案里唯一的重码是 lo / luo：常用的 luo 排前面，编辑区显示 luo'ji 而不是 lo'ji（#226）
+        for s in SCHEMES {
+            for (code, list) in table(s) {
+                if list.len() > 1 {
+                    assert_eq!(list.as_slice(), &["luo", "lo"], "{s:?} {code:?}");
+                }
+            }
+        }
+        assert_eq!(display(Scheme::Ziranma, "loji"), "luo'ji");
+        let d = decode(Scheme::Xiaohe, "loji");
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[1].pinyin, "lo'ji");
     }
 }

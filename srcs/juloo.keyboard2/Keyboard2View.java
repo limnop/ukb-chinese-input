@@ -405,7 +405,7 @@ public class Keyboard2View extends View
     canvas.drawRoundRect(_tmpRect, r, r, tc.bg_paint);
     if (w > 0.f)
     {
-      float overlap = r - r * 0.85f + w; // sin(45°)
+      float overlap = r * (1.f - 0.7071068f) + w;
       drawBorder(canvas, x, y, x + overlap, y + keyH, tc.border_left_paint, tc);
       drawBorder(canvas, x + keyW - overlap, y, x + keyW, y + keyH, tc.border_right_paint, tc);
       drawBorder(canvas, x, y, x + keyW, y + overlap, tc.border_top_paint, tc);

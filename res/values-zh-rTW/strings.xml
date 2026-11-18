@@ -70,6 +70,15 @@
     <string name="pref_character_size_title">字體大小</string>
     <string name="pref_character_size_summary">控制字元在鍵盤上顯示的大小（%.2fx）</string>
     <string name="pref_theme">主題</string>
+    <string name="theme_group_system">系統與動態配色</string>
+    <string name="theme_group_geek">極客風格</string>
+    <string name="theme_group_material">玻璃與漸層</string>
+    <string name="theme_group_classic">經典黑白</string>
+    <string name="theme_group_color">個性配色</string>
+    <string name="pref_theme_e_terminal">磷光終端</string>
+    <string name="pref_theme_e_graphite">極簡石墨</string>
+    <string name="pref_theme_e_acrylic">霧藍壓克力</string>
+    <string name="pref_theme_e_gradientpurplepink">紫粉漸層</string>
     <string name="pref_theme_e_system">系統設定</string>
     <string name="pref_theme_e_dark">深色主題</string>
     <string name="pref_theme_e_light">淺色主題</string>

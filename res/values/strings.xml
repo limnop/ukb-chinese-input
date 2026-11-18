@@ -70,6 +70,14 @@
     <string name="pref_character_size_title">Label size</string>
     <string name="pref_character_size_summary">Size of characters displayed on the keyboard (%.2fx)</string>
     <string name="pref_theme">Theme</string>
+    <string name="theme_group_system">System &amp; dynamic</string>
+    <string name="theme_group_geek">Geek</string>
+    <string name="theme_group_material">Glass &amp; gradients</string>
+    <string name="theme_group_classic">Classic monochrome</string>
+    <string name="theme_group_color">Color palettes</string>
+    <string name="pref_theme_e_terminal">Phosphor Terminal</string>
+    <string name="pref_theme_e_graphite">Graphite Minimal</string>
+    <string name="pref_theme_e_acrylic">Frosted Acrylic</string>
     <string name="pref_theme_e_system">System settings</string>
     <string name="pref_theme_e_dark">Dark</string>
     <string name="pref_theme_e_light">Light</string>

@@ -6,7 +6,9 @@
 
 ### 本分支功能
 
-- 拼音输入由 WowType Rust 引擎配合完整雾凇词库、补充字表和词级语言模型，提供整句候选、纠错、模糊音和本地学习；注音输入保留原有实现。
+- 在「设置 → 样式 → 主题」按分类浏览配色。新增磷光终端、极简石墨和雾蓝亚克力：[键盘实拍对比](doc/keyboard-themes.png)。亚克力使用半透明色层，不会模糊其他应用的内容。
+- 拼音输入由 WowType v0.6.0 Rust 引擎配合完整雾凇词库、补充字表和词级语言模型，提供整句候选、纠错、模糊音和本地学习；注音输入保留原有实现。
+- 在拼音布局上，从 `x` 向左上滑输入 `「`，向右下滑输入 `」`；点按仍输入 `x`。
 - 在文本密码框中自动切换到英文布局，并在底栏提供快速收起按钮。
 - 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - 剪贴板默认持久保存最近 70 条文本；键盘打开时自动轮询远端更新，也可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并提供预览和去重处理。密码框期间暂停自动轮询。
@@ -39,6 +41,7 @@ This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboa
 
 ### Features in this fork
 
+- Browse themes by category under Settings → Style → Theme. [Compare the three keyboard themes](doc/keyboard-themes.png): Phosphor Terminal, Graphite Minimal, and Frosted Acrylic. Acrylic uses translucent layers rather than blurring the app behind the keyboard.
 - WowType Rust pinyin decoding with the full rime-ice lexicon, supplementary characters and word language model, offering sentence candidates, typo correction, fuzzy pinyin, and local learning. Zhuyin retains its existing implementation.
 - Password text fields switch to an English layout automatically, and the bottom row has a quick-hide button.
 - A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.

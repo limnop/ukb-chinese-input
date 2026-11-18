@@ -108,6 +108,32 @@ pub fn fullwidth_punct(ascii: char) -> Option<&'static str> {
     Some(text)
 }
 
+/// 自动配对：左标点的 ASCII 键给出的 `(左半边, 右半边)`，和 [`fullwidth_punct`] 一致。
+pub fn auto_pair(ascii: char) -> Option<(char, char)> {
+    Some(match ascii {
+        '(' => ('（', '）'),
+        '[' => ('【', '】'),
+        '<' => ('《', '》'),
+        '{' => ('「', '」'),
+        '"' => ('“', '”'),
+        '\'' => ('‘', '’'),
+        _ => return None,
+    })
+}
+
+/// 自动配对：右标点的 ASCII 键对应的右半边（跳过补好的那个时比对）。引号左右是同一个键。
+pub fn closing_punct(ascii: char) -> Option<char> {
+    Some(match ascii {
+        ')' => '）',
+        ']' => '】',
+        '>' => '》',
+        '}' => '」',
+        '"' => '”',
+        '\'' => '’',
+        _ => return None,
+    })
+}
+
 /// 标点样式：全角（中文标点）或半角（ASCII 原样上屏）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PunctStyle {
@@ -119,7 +145,25 @@ pub enum PunctStyle {
 ///
 /// - 半角样式：一律原样上屏
 /// - 全角样式：数字后面的符号一律原样（3.14、20:22、3,000、50%），不换成中文标点
+///
+/// 引号左右交替的状态记在线程里（C 接口 `wowtype_punct` 用）；会话用 [`punct_with`]，各记各的。
 pub fn punct(ascii: char, style: PunctStyle, prev: Option<char>) -> Option<&'static str> {
+    QUOTE_OPEN.with(|state| {
+        let mut quotes = state.get();
+        let out = punct_with(ascii, style, prev, &mut quotes);
+        state.set(quotes);
+        out
+    })
+}
+
+/// 同 [`punct`]，引号左右交替的状态由调用方保管（每个输入会话一份：在 A 应用里开的引号，
+/// 到 B 应用里不该变成右引号）。`quotes` 是双引号、单引号各自上一次给的是不是左引号。
+pub fn punct_with(
+    ascii: char,
+    style: PunctStyle,
+    prev: Option<char>,
+    quotes: &mut [bool; 2],
+) -> Option<&'static str> {
     if style == PunctStyle::Halfwidth {
         return None;
     }
@@ -127,7 +171,7 @@ pub fn punct(ascii: char, style: PunctStyle, prev: Option<char>) -> Option<&'sta
         return None;
     }
     if ascii == '"' || ascii == '\'' {
-        return Some(quote(ascii, prev));
+        return Some(quote(ascii, prev, quotes));
     }
     fullwidth_punct(ascii)
 }
@@ -138,24 +182,20 @@ thread_local! {
 }
 
 /// 引号左右交替：“……” ‘……’。光标前是空白或左括号时一定给左引号。
-fn quote(ascii: char, prev: Option<char>) -> &'static str {
+fn quote(ascii: char, prev: Option<char>, quotes: &mut [bool; 2]) -> &'static str {
     let (slot, open, close) = if ascii == '"' {
         (0, "“", "”")
     } else {
         (1, "‘", "’")
     };
-    QUOTE_OPEN.with(|state| {
-        let mut opened = state.get();
-        let want_open = prev.is_some_and(|c| c.is_whitespace() || "(（[【<《{「『".contains(c))
-            || !opened[slot];
-        opened[slot] = want_open;
-        state.set(opened);
-        if want_open {
-            open
-        } else {
-            close
-        }
-    })
+    let want_open =
+        prev.is_some_and(|c| c.is_whitespace() || "(（[【<《{「『".contains(c)) || !quotes[slot];
+    quotes[slot] = want_open;
+    if want_open {
+        open
+    } else {
+        close
+    }
 }
 
 /// 按拼音或中文名前缀检索符号。

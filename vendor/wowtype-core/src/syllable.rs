@@ -120,6 +120,10 @@ pub fn fuzzy_id(id: SyllableId) -> Option<SyllableId> {
 }
 
 /// 模糊音分组（位掩码），可以分别打开。
+///
+/// 两个音节算相同：声母最多换一步、韵母最多换一步（各用一个打开的分组），
+/// 另外还可以整个音节换一次（huang = wang）。zhang = zan 是 ZH 加 AN；
+/// n = l、r = l 都开着 n 也不等于 r，an = ai、an = ang 都开着 ai 也不等于 ang。
 pub mod fuzzy {
     /// z = zh
     pub const ZH: u32 = 1 << 0;
@@ -145,96 +149,123 @@ pub mod fuzzy {
     pub const UAN: u32 = 1 << 10;
     /// un = ong（dun = dong、hun = hong）
     pub const UN: u32 = 1 << 11;
+    /// an = ai（dan = dai、san = sai），吴语等方言里两个韵母读成一个
+    pub const AN_AI: u32 = 1 << 12;
+    /// huang = wang
+    pub const HUANG_WANG: u32 = 1 << 13;
+    /// un = iong（jun = jiong、qun = qiong、xun = xiong、yun = yong）
+    pub const UN_IONG: u32 = 1 << 14;
+    /// eng = ong（zheng = zhong、geng = gong、deng = dong）
+    pub const ENG_ONG: u32 = 1 << 15;
     /// 全部分组。
-    pub const ALL: u32 = (1 << 12) - 1;
+    pub const ALL: u32 = (1 << 16) - 1;
+    /// 换声母的分组；一次只能用其中一个。
+    pub(crate) const INITIAL: u32 = ZH | CH | SH | NL | FH | RL;
+    /// 换韵母的分组；一次只能用其中一个。
+    pub(crate) const FINAL: u32 = AN | EN | IN | IAN | UAN | UN | AN_AI | UN_IONG | ENG_ONG;
     /// 默认打开的分组：平翘舌和前后鼻音（和只有一个总开关时一样）。
     pub const DEFAULT: u32 = ZH | CH | SH | AN | EN | IN | IAN | UAN;
 }
 
-fn fuzzy_initial(initial: &str) -> &str {
-    match initial {
-        "zh" => "z",
-        "ch" => "c",
-        "sh" => "s",
-        "n" | "r" => "l",
-        "f" => "h",
-        other => other,
-    }
-}
+/// 能互相替换的声母、韵母。链上每一项标的是它和前一项之间那一步属于哪个分组，
+/// 只有相邻的两项能换（见 [`fuzzy`]）。
+const INITIAL_CHAINS: &[&[(&str, u32)]] = &[
+    &[("z", 0), ("zh", fuzzy::ZH)],
+    &[("c", 0), ("ch", fuzzy::CH)],
+    &[("s", 0), ("sh", fuzzy::SH)],
+    &[("n", 0), ("l", fuzzy::NL), ("r", fuzzy::RL)],
+    &[("f", 0), ("h", fuzzy::FH)],
+];
 
-fn fuzzy_final(final_: &str) -> &str {
-    match final_ {
-        "iang" => "ian",
-        "uang" => "uan",
-        "ang" => "an",
-        "eng" => "en",
-        "ing" => "in",
-        "ong" => "un",
-        other => other,
-    }
-}
+/// 同 [`INITIAL_CHAINS`]，韵母。un 在 j、q、x、y 后面读 ün，所以 un = iong 是 jun = jiong、yun = yong。
+const FINAL_CHAINS: &[&[(&str, u32)]] = &[
+    &[("ai", 0), ("an", fuzzy::AN_AI), ("ang", fuzzy::AN)],
+    &[("ian", 0), ("iang", fuzzy::IAN)],
+    &[("uan", 0), ("uang", fuzzy::UAN)],
+    &[("in", 0), ("ing", fuzzy::IN)],
+    &[
+        ("en", 0),
+        ("eng", fuzzy::EN),
+        ("ong", fuzzy::ENG_ONG),
+        ("un", fuzzy::UN),
+        ("iong", fuzzy::UN_IONG),
+    ],
+];
 
-/// 音节在「全部模糊音分组都打开」时的归并键：声母、韵母各自归并后编码。
+/// 声母、韵母都不同，只能整个音节换的：huang = wang。
+const SYLLABLE_PAIRS: &[(&str, &str, u32)] = &[("huang", "wang", fuzzy::HUANG_WANG)];
+
+/// 每个音节在模糊音下的（类，位置）。
 ///
-/// 模糊音索引按这个键建一次；具体打开了哪些分组，查到以后再用 [`fuzzy_groups_between`] 过滤，
-/// 这样改开关不用重建 55 万词的索引。
-pub fn fuzzy_key(id: SyllableId) -> Option<u32> {
-    static TABLE: std::sync::OnceLock<Vec<u32>> = std::sync::OnceLock::new();
-    let table = TABLE.get_or_init(|| {
-        SYLLABLES
+/// 类：全部分组都打开时能互相替换的音节是一类，模糊音索引按类建一次。
+/// 位置：从类里的起点走到这个音节要经过的分组。同一类的两个音节之间经过的分组就是
+/// 两个位置的异或——每条链上一个分组只出现一次，声母、韵母、成对音节的分组互不重叠，
+/// 共同走过的那段异或掉了，剩下的正好是两者之间的每一步。
+fn fuzzy_table() -> &'static [(u32, u32)] {
+    static TABLE: std::sync::OnceLock<Vec<(u32, u32)>> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        // 链头和走到 part 经过的分组；不在任何链上的就是它自己、不经过分组
+        fn place<'a>(chains: &[&[(&'a str, u32)]], part: &'a str) -> (&'a str, u32) {
+            for chain in chains {
+                let mut mask = 0;
+                for &(x, group) in chain.iter() {
+                    mask |= group;
+                    if x == part {
+                        return (chain[0].0, mask);
+                    }
+                }
+            }
+            (part, 0)
+        }
+        let mut table: Vec<(u32, u32)> = SYLLABLES
             .iter()
             .enumerate()
             .map(|(i, text)| match split(text) {
                 Some((initial, final_)) => {
-                    let ic = INITIALS
-                        .iter()
-                        .position(|x| *x == fuzzy_initial(initial))
-                        .map_or(0, |p| p as u32 + 1);
-                    let fc = bsearch(FINALS, fuzzy_final(final_)).map_or(0, |p| p as u32 + 1);
-                    (ic << 8) | fc
+                    // yong 是零声母的 iong（和 jiong、xiong 同韵），不是 y + ong
+                    let final_ = if (initial, final_) == ("y", "ong") { "iong" } else { final_ };
+                    let (ih, im) = place(INITIAL_CHAINS, initial);
+                    let (fh, fm) = place(FINAL_CHAINS, final_);
+                    let ic = INITIALS.iter().position(|x| *x == ih).map_or(0, |p| p as u32 + 1);
+                    let fc = bsearch(FINALS, fh).map_or(0, |p| p as u32 + 1);
+                    ((ic << 8) | fc, im | fm)
                 }
                 // 拆不开的音节只和自己相同
-                None => 0x1_0000 | i as u32,
+                None => (0x1_0000 | i as u32, 0),
             })
-            .collect()
-    });
-    table.get(id as usize).copied()
+            .collect();
+        // 成对的音节：b 所在的整类并进 a 所在的类，位置改成从 a 那边的起点经 a -> b 走过来
+        for &(a, b, group) in SYLLABLE_PAIRS {
+            let (ka, ma) = table[usize::from(id_of(a).expect("成对音节在表里"))];
+            let (kb, mb) = table[usize::from(id_of(b).expect("成对音节在表里"))];
+            let shift = ma ^ group ^ mb;
+            for entry in table.iter_mut().filter(|e| e.0 == kb) {
+                *entry = (ka, entry.1 ^ shift);
+            }
+        }
+        table
+    })
+}
+
+/// 音节在「全部模糊音分组都打开」时的归并键。
+///
+/// 模糊音索引按这个键建一次；具体打开了哪些分组，查到以后再用 [`fuzzy_groups_between`] 过滤，
+/// 这样改开关不用重建 55 万词的索引。
+pub fn fuzzy_key(id: SyllableId) -> Option<u32> {
+    fuzzy_table().get(usize::from(id)).map(|e| e.0)
 }
 
 /// a、b 两个音节要打开哪些模糊音分组才算相同；本来就相同返回 Some(0)，
-/// 怎么都不算相同（比如 n 和 r）返回 None。
+/// 怎么都不算相同（比如 n 和 m，或者声母、韵母要换两步的 n 和 r）返回 None。
 pub fn fuzzy_groups_between(a: SyllableId, b: SyllableId) -> Option<u32> {
-    if a == b {
-        return Some(0);
-    }
-    let (ai, af) = split(SYLLABLES.get(a as usize)?)?;
-    let (bi, bf) = split(SYLLABLES.get(b as usize)?)?;
-    let mut need = 0;
-    if ai != bi {
-        let pair = if ai < bi { (ai, bi) } else { (bi, ai) };
-        need |= match pair {
-            ("z", "zh") => fuzzy::ZH,
-            ("c", "ch") => fuzzy::CH,
-            ("s", "sh") => fuzzy::SH,
-            ("l", "n") => fuzzy::NL,
-            ("f", "h") => fuzzy::FH,
-            ("l", "r") => fuzzy::RL,
-            _ => return None,
-        };
-    }
-    if af != bf {
-        let pair = if af < bf { (af, bf) } else { (bf, af) };
-        need |= match pair {
-            ("an", "ang") => fuzzy::AN,
-            ("ian", "iang") => fuzzy::IAN,
-            ("uan", "uang") => fuzzy::UAN,
-            ("ong", "un") => fuzzy::UN,
-            ("en", "eng") => fuzzy::EN,
-            ("in", "ing") => fuzzy::IN,
-            _ => return None,
-        };
-    }
-    Some(need)
+    let table = fuzzy_table();
+    let (ka, ma) = *table.get(usize::from(a))?;
+    let (kb, mb) = *table.get(usize::from(b))?;
+    let need = ma ^ mb;
+    (ka == kb
+        && (need & fuzzy::INITIAL).count_ones() <= 1
+        && (need & fuzzy::FINAL).count_ones() <= 1)
+        .then_some(need)
 }
 
 /// 别的写法 -> 表里的写法。
@@ -553,6 +584,73 @@ pub fn parse(input: &str) -> Result<ParsedInput, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Linux 设置界面（Python，不链接核心）自己抄了一份音节表，改了这里要跟着改。
+    #[test]
+    fn settings_syllable_table_matches() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../settings/wowtype-config");
+        let Ok(script) = std::fs::read_to_string(path) else {
+            return; // 单独发的核心源码包里没有设置界面
+        };
+        let start = script
+            .find("SYLLABLES = frozenset(\"\"\"")
+            .expect("找不到 SYLLABLES");
+        let body = &script[start..];
+        let body = &body[body.find('\n').unwrap()..body.find("\"\"\".split()").unwrap()];
+        let mut theirs: Vec<&str> = body.split_whitespace().collect();
+        theirs.sort_unstable();
+        assert_eq!(
+            theirs, SYLLABLES,
+            "settings/wowtype-config 的 SYLLABLES 和核心的不一样"
+        );
+    }
+
+    /// fuzzy_groups_between 用位置异或算，这里按定义一对一对直接比：
+    /// 声母、韵母各最多换一步（链上相邻），再加最多一次成对音节。
+    #[test]
+    fn fuzzy_groups_match_definition() {
+        fn step(chains: &[&[(&str, u32)]], x: &str, y: &str) -> Option<u32> {
+            if x == y {
+                return Some(0);
+            }
+            chains.iter().find_map(|chain| {
+                chain.windows(2).find_map(|w| {
+                    ((w[0].0, w[1].0) == (x, y) || (w[0].0, w[1].0) == (y, x)).then_some(w[1].1)
+                })
+            })
+        }
+        fn parts(text: &str) -> Option<(&'static str, &'static str)> {
+            let (i, f) = split(text)?;
+            Some(if (i, f) == ("y", "ong") { (i, "iong") } else { (i, f) })
+        }
+        let direct = |a: &str, b: &str| -> Option<u32> {
+            let ((ai, af), (bi, bf)) = (parts(a)?, parts(b)?);
+            Some(step(INITIAL_CHAINS, ai, bi)? | step(FINAL_CHAINS, af, bf)?)
+        };
+        let one_step = |need: u32| {
+            (need & fuzzy::INITIAL).count_ones() <= 1 && (need & fuzzy::FINAL).count_ones() <= 1
+        };
+        let expected = |a: &str, b: &str| -> Option<u32> {
+            if a == b {
+                return Some(0);
+            }
+            if let Some(need) = direct(a, b) {
+                return Some(need);
+            }
+            SYLLABLE_PAIRS.iter().find_map(|&(p, q, group)| {
+                [(p, q), (q, p)].into_iter().find_map(|(x, y)| {
+                    let need = direct(a, x)? | group | direct(y, b)?;
+                    one_step(need).then_some(need)
+                })
+            })
+        };
+        for (i, a) in SYLLABLES.iter().enumerate() {
+            for (j, b) in SYLLABLES.iter().enumerate() {
+                let got = fuzzy_groups_between(i as SyllableId, j as SyllableId);
+                assert_eq!(got, expected(a, b), "{a} / {b}");
+            }
+        }
+    }
 
     #[test]
     fn syllable_table_is_sorted_and_unique() {

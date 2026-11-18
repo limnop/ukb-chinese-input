@@ -207,9 +207,9 @@ public class CandidatesView extends LinearLayout
       which was otherwise the most apt, as it would have needed two glyphs picked
       by subtype. This one takes the rising tone, which is unmistakable, and is
       script-invariant. Anything else, Korean included, has no reading to show. */
-  static String[] rubytext_exemplar()
+  String[] rubytext_exemplar()
   {
-    switch (current_script())
+    switch (_script)
     {
       case "kana":
         return new String[]{ "\u97f3", "\u304a\u3093" }; /* sound, "on" */
@@ -221,32 +221,13 @@ public class CandidatesView extends LinearLayout
     }
   }
 
-  /** The script the layout in front of the user declares - "kana", "pinyin",
-      "zhuyin", "hangul" - or "" when there is none.
-
-      Not the app's language. [DeviceLocales.OFFERED] is a table the build pins,
-      so the language reads "ja_JP" on every layout; a script comes from the
-      layout file, and changing layout changes it. Nothing pins a layout file.
-
-      Read from the layout, not from the composer, so an idle row - no
-      composition, only dictionary suggestions - still knows what it is showing
-      and keeps the control. */
-  static String current_script()
-  {
-    Config config = Config.globalConfig();
-    int i = config.get_current_layout();
-    if (i < 0 || i >= config.layouts.size())
-      return "";
-    KeyboardData layout = config.layouts.get(i);
-    return layout == null ? "" : layout.script;
-  }
+  private String _script = "";
 
   /** Whether the layout in front of the user annotates with a tone mark. An
       empty script - the system layout - is not a language that annotates. */
-  static boolean is_chinese()
+  boolean is_chinese()
   {
-    String script = current_script();
-    return script.equals("pinyin") || script.equals("zhuyin");
+    return KeyboardData.is_chinese_script(_script);
   }
 
   /** How much larger than its line a Chinese tone mark is drawn. The marks are
@@ -412,8 +393,9 @@ public class CandidatesView extends LinearLayout
     update_controls();
   }
 
-  public void refresh_config(Config config)
+  public void refresh_config(Config config, String script)
   {
+    _script = script == null ? "" : script;
     collapse();
     clear_candidates();
     set_sizes(config);
@@ -543,9 +525,8 @@ public class CandidatesView extends LinearLayout
     ensure_siblings();
     if (_composing_view == null)
       return;
-    boolean show = is_chinese() && text.length() > 0
-        && getVisibility() == View.VISIBLE;
-    if (show)
+    boolean show = is_chinese();
+    if (show && text.length() > 0)
     {
       int c = Math.max(0, Math.min(cursor, text.length()));
       /* The caret is a literal bar inside the line: no custom drawing, no

@@ -25,6 +25,11 @@ public final class KeyboardData
   public final Modmap modmap;
   /** Might be null. */
   public final String script;
+
+  public static boolean is_chinese_script(String script)
+  {
+    return "pinyin".equals(script) || "zhuyin".equals(script);
+  }
   /** Might be different from [script]. Might be null. */
   public final String numpad_script;
   /** The [name] attribute. Might be null.  */

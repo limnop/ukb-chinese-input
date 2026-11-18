@@ -50,7 +50,7 @@ if not rows:raise RuntimeError('Empty component dictionary')
 with open(out/'wowtype_components.tsv','w') as f:
     for row in sorted(rows):f.write('\t'.join(map(str,row))+'\n')
 shutil.copyfile(rime/'LICENSE',out/'wowtype-data-LICENSE.txt')
-(out/'wowtype-data-SOURCE.txt').write_text(f'''WowType default Chinese data pipeline, core commit 38eb269989a4c54c96c4b5749a13294750498b5e.
+(out/'wowtype-data-SOURCE.txt').write_text(f'''WowType Chinese data pipeline, data tools and hotwords commit 38eb269989a4c54c96c4b5749a13294750498b5e.
 Lexicon: https://github.com/iDvel/rime-ice at {revision}, GPL-3.0.
 Converted with WowType rime2tsv.py (including 41448 extra characters) and add_hotwords.py.
 U-mode component readings: rime-ice radical_pinyin.dict.yaml (credits https://github.com/mirtlecn/rime_radical_pinyin).

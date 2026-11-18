@@ -27,6 +27,7 @@ fn main() {
     let mut out_path = String::new();
     let mut config = TrainConfig::default();
     let mut arpa: Option<String> = None;
+    let mut lm_path: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -39,11 +40,12 @@ fn main() {
             "--cases" => cases_path = take(&mut i),
             "--out" => out_path = take(&mut i),
             "--arpa" => arpa = Some(take(&mut i)),
+            "--lm" => lm_path = Some(take(&mut i)),
             "--epochs" => config.epochs = take(&mut i).parse().unwrap_or(config.epochs),
             "--lr" => config.learning_rate = take(&mut i).parse().unwrap_or(config.learning_rate),
             "--l2" => config.l2 = take(&mut i).parse().unwrap_or(config.l2),
             "-h" | "--help" => {
-                println!("wowtype-train --lexicon <tsv> --cases <tsv> [--out weights.txt] [--epochs n] [--lr v] [--l2 v]");
+                println!("wowtype-train --lexicon <tsv> --cases <tsv> [--lm words.lm|--arpa model.arpa] [--out weights.txt] [--epochs n] [--lr v] [--l2 v]");
                 return;
             }
             other => fail(&format!("未知参数: {other}")),
@@ -58,6 +60,8 @@ fn main() {
         .unwrap_or_else(|e| fail(&format!("词库载入失败: {e:#}")));
     let lm: Arc<dyn LanguageModel> = if let Some(path) = &arpa {
         Arc::new(ArpaLm::from_arpa_path(path).unwrap_or_else(|e| fail(&format!("{e:#}"))))
+    } else if let Some(path) = &lm_path {
+        wowtype_core::lm::load_lm(path).unwrap_or_else(|e| fail(&format!("{e:#}")))
     } else {
         Arc::new(BigramLm::default())
     };

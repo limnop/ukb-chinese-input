@@ -90,8 +90,7 @@ public final class KeyEventHandler
       finish_composition();
       _composer = composer;
     }
-    _composing_on_keyboard =
-      "pinyin".equals(script) || "zhuyin".equals(script);
+    _composing_on_keyboard = KeyboardData.is_chinese_script(script);
   }
 
   /** Return the composer of the given layout script. Scripts that are typed
@@ -241,15 +240,7 @@ public final class KeyEventHandler
           conn.setComposingText(text, 1);
       }
     }
-    List<Composer.Candidate> candidates = _composer.candidates();
-    /* Keep the dictionary suggestions when the composer has none: the row
-       belongs to the dictionary then. The word composed so far is used, not
-       the one the editor last reported, which lags a keystroke behind. */
-    if (candidates.size() > 0 || (_composer instanceof Pinyin
-        && ((Pinyin)_composer).is_special_mode()))
-      _suggestions.composition_candidates(candidates);
-    else
-      _suggestions.currently_typed_word(text);
+    currently_typed_word(text);
   }
 
   /** Commit the composition and forget it, leaving the editor with the
@@ -538,8 +529,7 @@ public final class KeyEventHandler
        to the dictionary, so that words are still suggested while the
        composition is live. */
     List<Composer.Candidate> candidates = _composer.candidates();
-    if (candidates.size() > 0 || (_composer instanceof Pinyin
-        && ((Pinyin)_composer).is_special_mode()))
+    if (_composing_on_keyboard || !candidates.isEmpty())
     {
       _suggestions.composition_candidates(candidates);
       return;
@@ -550,7 +540,7 @@ public final class KeyEventHandler
   public void dictionary_changed()
   {
     // Refresh the suggestions immediately after dictionary changed.
-    _suggestions.currently_typed_word(_typedword.get());
+    currently_typed_word(_typedword.get());
   }
 
   /** Update [_mods] to be consistent with the [mods], sending key events if
@@ -1013,6 +1003,8 @@ public final class KeyEventHandler
       send_composition();
       return;
     }
+    if (_composing_on_keyboard && has_composition())
+      return;
     if (_last_action == LastAction.SUGGESTION_ENTERED
         && last_replaced_word != null)
     {

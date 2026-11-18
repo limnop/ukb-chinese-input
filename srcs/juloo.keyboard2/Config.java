@@ -256,7 +256,7 @@ public final class Config
     return get_dip_pref(dm, pref_base_name + suffix, def);
   }
 
-  private int getThemeId(Resources res, String theme_name)
+  public static int getThemeId(Resources res, String theme_name)
   {
     int night_mode = res.getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
     switch (theme_name)
@@ -282,6 +282,9 @@ public final class Config
       case "epaperblack": return R.style.ePaperBlack;
       case "dracula": return R.style.Dracula;
       case "gradientpurplepink": return R.style.GradientPurplePink;
+      case "terminal": return R.style.Terminal;
+      case "graphite": return R.style.Graphite;
+      case "acrylic": return R.style.Acrylic;
       default:
       case "system":
         if ((night_mode & Configuration.UI_MODE_NIGHT_NO) != 0)

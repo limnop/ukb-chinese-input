@@ -50,6 +50,12 @@ public final class EditorConfig
 
   public EditorConfig() {}
 
+  public boolean show_candidate_row(String script, boolean suggestions, boolean split)
+  {
+    return KeyboardData.is_chinese_script(script)
+      || (suggestions && !split && !password_editor && !numeric_layout);
+  }
+
   public void refresh(EditorInfo info, Resources res)
   {
     int inputType = info.inputType & InputType.TYPE_MASK_CLASS;

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <dimen name="theme_swatch_gap">12dp</dimen>
   <declare-styleable name="keyboard">
     <!-- The background of the keyboard -->
     <attr name="colorKeyboard" format="color"/>
@@ -371,5 +372,65 @@
     <item name="keyBorderWidthActivated">0dp</item>
     <item name="emoji_button_bg">#3B2D50</item>
     <item name="emoji_color">#FFFFFF</item>
+  </style>
+  <style name="Terminal" parent="BaseTheme">
+    <item name="android:isLightTheme">false</item>
+    <item name="colorKeyboard">#071510</item>
+    <item name="colorKey">#10251C</item>
+    <item name="colorKeyAction">#19382D</item>
+    <item name="colorKeySpaceBar">#153328</item>
+    <item name="colorKeyActivated">#9AFFA9</item>
+    <item name="colorLabel">#A1FFAE</item>
+    <item name="colorSubLabel">#80BC98</item>
+    <item name="colorLabelPressed">#081C11</item>
+    <item name="colorLabelActivated">#133B26</item>
+    <item name="colorLabelLocked">#624200</item>
+    <item name="keyBorderRadius">2dp</item>
+    <item name="keyBorderWidth">1dp</item>
+    <item name="keyBorderColorTop">#408963</item>
+    <item name="keyBorderColorLeft">#2A5D43</item>
+    <item name="keyBorderColorRight">#2A5D43</item>
+    <item name="keyBorderColorBottom">#244936</item>
+    <item name="emoji_button_bg">?attr/colorKeyAction</item>
+    <item name="emoji_color">?attr/colorLabel</item>
+  </style>
+  <style name="Graphite" parent="BaseTheme">
+    <item name="android:isLightTheme">false</item>
+    <item name="colorKeyboard">#191B1E</item>
+    <item name="colorKey">#202226</item>
+    <item name="colorKeyAction">#2C3035</item>
+    <item name="colorKeySpaceBar">#282C31</item>
+    <item name="colorKeyActivated">#40484D</item>
+    <item name="colorLabel">#EEF0F1</item>
+    <item name="colorSubLabel">#A1A7AA</item>
+    <item name="colorLabelActivated">#B9E6DF</item>
+    <item name="colorLabelLocked">#88DCCB</item>
+    <item name="keyBorderRadius">3dp</item>
+    <item name="emoji_button_bg">?attr/colorKeyAction</item>
+    <item name="emoji_color">?attr/colorLabel</item>
+  </style>
+  <style name="Acrylic" parent="BaseTheme">
+    <item name="android:isLightTheme">false</item>
+    <item name="colorKeyboard">#BF14253B</item>
+    <item name="navigationBarColor">#20354F</item>
+    <item name="keyboardGradientStart">#99507C86</item>
+    <item name="keyboardGradientEnd">#99455079</item>
+    <item name="colorKey">#26E1F6FF</item>
+    <item name="colorKeyAction">#4D183954</item>
+    <item name="colorKeySpaceBar">#40D6EBFF</item>
+    <item name="colorKeyActivated">#8ECDE0F0</item>
+    <item name="colorLabel">#FFFFFF</item>
+    <item name="colorSubLabel">#ECF6FF</item>
+    <item name="colorLabelPressed">#102438</item>
+    <item name="colorLabelActivated">#102438</item>
+    <item name="colorLabelLocked">#382747</item>
+    <item name="keyBorderRadius">10dp</item>
+    <item name="keyBorderWidth">1dp</item>
+    <item name="keyBorderColorTop">#A6F1FCFF</item>
+    <item name="keyBorderColorLeft">#70E0F2FF</item>
+    <item name="keyBorderColorRight">#45D3E7FF</item>
+    <item name="keyBorderColorBottom">#337E9BB7</item>
+    <item name="emoji_button_bg">#324A63</item>
+    <item name="emoji_color">?attr/colorLabel</item>
   </style>
 </resources>

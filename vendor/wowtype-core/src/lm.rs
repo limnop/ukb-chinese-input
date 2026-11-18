@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 
@@ -19,6 +20,11 @@ pub trait LanguageModel: Send + Sync {
     /// 避免回退到一元概率时用错分布（例如从二元计数反推的一元）。
     fn has_bigram(&self, _prev: &str, _cur: &str) -> bool {
         false
+    }
+
+    /// 词表里有没有这个词；None 表示这个模型没有词表可查（字级、测试用的模型）。
+    fn knows_word(&self, _word: &str) -> Option<bool> {
+        None
     }
 
     /// 一句话的累计对数概率。
@@ -462,5 +468,76 @@ ngram 2=2
         let lm = BigramLm::from_bigram_tsv_str("你\t好\t4\n好\t你\t1\n").unwrap();
         assert!(lm.total() > 0.0);
         assert_eq!(lm.vocab(), 2);
+    }
+}
+
+/// 领域词级模型的默认权重（[`MixedLm`]）。Tatoeba 上 0.2–0.4 都试过，0.4 在领域内最好、领域外不掉。
+pub const DOMAIN_LM_WEIGHT: f64 = 0.4;
+
+/// 通用词级模型混上一个领域模型（用户拿自己的语料用 `wowtype-lmbuild` 训的）：
+/// `score = (1 − w) · 通用 + w · 领域`。
+///
+/// 词级模型的分数是「搭配比各自随便出现常见多少」的对数（`ln P(cur|prev) − ln P(cur)`，见 [`crate::wordlm`]），
+/// 这样加权就是两个模型对这个比值的几何平均。领域模型不认识 prev 时给 0（没有搭配可说），
+/// 等于把通用模型的分数按 1 − w 收一点。也试过「领域模型不认识 prev 或 cur 时只用通用模型」
+/// 和按比值线性插值，领域内的收益都更小，领域外（日常句、上文、热词三组加起来）也没有更好，所以就用最简单的加权。
+///
+/// 词表（`knows_word`，上文特征拿它判断认不认识这个词）和联想（`top_next`）按通用模型：
+/// 领域模型只有几千到几万个词，不能拿它判断一个词认不认识。
+pub struct MixedLm {
+    general: Arc<dyn LanguageModel>,
+    domain: Arc<dyn LanguageModel>,
+    weight: f64,
+}
+
+impl MixedLm {
+    /// `weight` 是领域模型的权重，夹在 0..=1。
+    pub fn new(general: Arc<dyn LanguageModel>, domain: Arc<dyn LanguageModel>, weight: f64) -> Self {
+        Self {
+            general,
+            domain,
+            weight: weight.clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl LanguageModel for MixedLm {
+    fn score(&self, prev: Option<&str>, cur: &str) -> f64 {
+        (1.0 - self.weight) * self.general.score(prev, cur) + self.weight * self.domain.score(prev, cur)
+    }
+
+    fn has_bigram(&self, prev: &str, cur: &str) -> bool {
+        self.general.has_bigram(prev, cur) || self.domain.has_bigram(prev, cur)
+    }
+
+    fn knows_word(&self, word: &str) -> Option<bool> {
+        self.general.knows_word(word)
+    }
+
+    fn top_next(&self, prev: &str, limit: usize) -> Vec<(String, f64)> {
+        self.general.top_next(prev, limit)
+    }
+}
+
+#[cfg(test)]
+mod mixed_lm_tests {
+    use super::*;
+
+    struct Fixed(f64, bool);
+    impl LanguageModel for Fixed {
+        fn score(&self, _prev: Option<&str>, _cur: &str) -> f64 {
+            self.0
+        }
+        fn knows_word(&self, _word: &str) -> Option<bool> {
+            Some(self.1)
+        }
+    }
+
+    #[test]
+    fn mixed_score_is_weighted() {
+        let m = MixedLm::new(Arc::new(Fixed(-2.0, true)), Arc::new(Fixed(-4.0, false)), 0.25);
+        assert!((m.score(None, "x") - (-2.5)).abs() < 1e-9);
+        // 认不认识一个词按通用模型：混上领域模型以后上文特征照样有
+        assert_eq!(m.knows_word("x"), Some(true));
     }
 }

@@ -276,6 +276,53 @@ pub fn search_english(query: &str, limit: usize) -> Vec<&'static str> {
     out
 }
 
+/// 表情面板的搜索：query 为空给全部 emoji；否则按拼音（经引擎转成中文词）、英文和
+/// 符号名一起找。engine 为 None 时只按英文和符号名找。最多 limit 个，不重复。
+pub fn panel_search(engine: Option<&crate::Engine>, query: &str, limit: usize) -> Vec<String> {
+    let query = query.trim();
+    let results: Vec<String> = if query.is_empty() {
+        all().into_iter().map(str::to_string).collect()
+    } else {
+        let mut words: Vec<String> = Vec::new();
+        if let Some(engine) = engine {
+            if query.bytes().all(|b| b.is_ascii_alphabetic() || b == b'\'') {
+                let outcome =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.try_input(query)));
+                if let Ok(Ok(candidates)) = outcome {
+                    words = candidates
+                        .into_iter()
+                        .filter(|c| c.consumed >= query.len() && !c.text.is_ascii())
+                        .map(|c| c.text)
+                        .take(8)
+                        .collect();
+                }
+            } else if !query.is_ascii() {
+                words.push(query.to_string());
+            }
+        }
+        let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+        let mut out: Vec<String> = Vec::new();
+        let add = |items: Vec<&str>, out: &mut Vec<String>| {
+            for item in items {
+                if !out.iter().any(|x| x == item) {
+                    out.push(item.to_string());
+                }
+            }
+        };
+        let symbols = crate::symbols::search(query, limit);
+        let (named, prefixed): (Vec<_>, Vec<_>) =
+            symbols.into_iter().partition(|s| s.names.contains(&query));
+        // 符号名完全对上的、关键词完全对上的 emoji、以名字开头的符号、英文、关键词里包含这个词的
+        add(named.into_iter().map(|s| s.text).collect(), &mut out);
+        add(search_words_exact(&refs, limit), &mut out);
+        add(prefixed.into_iter().map(|s| s.text).collect(), &mut out);
+        add(search_english(query, limit), &mut out);
+        add(search_words_containing(&refs, limit), &mut out);
+        out
+    };
+    results.into_iter().take(limit.max(1)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

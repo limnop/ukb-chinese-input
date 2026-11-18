@@ -48,6 +48,15 @@
     <string name="pref_character_size_title">字符大小</string>
     <string name="pref_character_size_summary">按键上显示的字符的大小 (%.2fx)</string>
     <string name="pref_theme">主题</string>
+    <string name="theme_group_system">系统与动态配色</string>
+    <string name="theme_group_geek">极客风格</string>
+    <string name="theme_group_material">玻璃与渐变</string>
+    <string name="theme_group_classic">经典黑白</string>
+    <string name="theme_group_color">个性配色</string>
+    <string name="pref_theme_e_terminal">磷光终端</string>
+    <string name="pref_theme_e_graphite">极简石墨</string>
+    <string name="pref_theme_e_acrylic">雾蓝亚克力</string>
+    <string name="pref_theme_e_gradientpurplepink">紫粉渐变</string>
     <string name="pref_theme_e_system">跟随系统设置</string>
     <string name="pref_theme_e_dark">暗色</string>
     <string name="pref_theme_e_light">亮色</string>

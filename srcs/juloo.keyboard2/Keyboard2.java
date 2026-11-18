@@ -92,9 +92,7 @@ public class Keyboard2 extends InputMethodService
     _currentSpecialLayout = null;
     // The active dictionary depends on the current layout.
     refresh_current_dictionary();
-    refresh_candidates_view();
-    _keyboard_layout_view.setKeyboard(current_layout());
-    refresh_composer();
+    apply_current_layout();
   }
 
   void incrTextLayout(int delta)
@@ -106,15 +104,15 @@ public class Keyboard2 extends InputMethodService
   void setSpecialLayout(KeyboardData l)
   {
     _currentSpecialLayout = l;
-    _keyboard_layout_view.setKeyboard(l);
-    refresh_composer();
+    apply_current_layout();
   }
 
-  /** Select the input method that goes with the script of the current layout.
-      The numeric, emoji and other special layouts do not compose text. */
-  void refresh_composer()
+  private void apply_current_layout()
   {
-    _keyeventhandler.set_layout_script(current_layout().script);
+    KeyboardData layout = current_layout();
+    _keyboard_layout_view.setKeyboard(layout);
+    _keyeventhandler.set_layout_script(layout.script);
+    refresh_candidates_view(layout.script);
   }
 
   KeyboardData loadLayout(int layout_id)
@@ -150,7 +148,6 @@ public class Keyboard2 extends InputMethodService
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
     _dictionaries.install_bundled_zh();
-    WowtypePinyinEngine.preload(this);
     Config.initGlobalConfig(prefs, getResources(),
         _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
@@ -163,8 +160,12 @@ public class Keyboard2 extends InputMethodService
     Logs.set_debug_logs(getResources().getBoolean(R.bool.debug_logs));
     refreshSubtypeImm();
     create_keyboard_view();
+    WowtypePinyinEngine.preload(this, () -> {
+      if (isInputViewShown() && _keyeventhandler.has_composition())
+        _keyeventhandler.dictionary_changed();
+    });
     ClipboardHistoryService.on_startup(this, _keyeventhandler);
-    _foldStateTracker.setChangedCallback(() -> { refresh_config(); });
+    _foldStateTracker.setChangedCallback(() -> { refresh_config(); apply_current_layout(); });
   }
 
   @Override
@@ -235,37 +236,17 @@ public class Keyboard2 extends InputMethodService
   {
     _dictionaries.set_selected(_config, dict_name);
     refresh_current_dictionary();
-    refresh_candidates_view();
+    refresh_candidates_view(current_layout_unmodified().script);
   }
 
-  /** The candidates row is not hidden on its own anymore. It is where a Chinese
-      layout draws the pinyin letters, the caret and the candidates, so apps that
-      ask for no suggestions (QQ, terminals, editors with [NO_SUGGESTIONS])
-      would otherwise lose all of Chinese input. Only two cases keep it away:
-      editors that mask what is typed (password fields) and numeric editors,
-      which never compose text. Split layouts use the space differently. */
-  private void refresh_candidates_view()
+  private void refresh_candidates_view(String script)
   {
-    boolean should_show =
-      _config.suggestions_enabled
-      && !_config.split_layout
-      && !_config.editor_config.password_editor
-      && !_config.editor_config.numeric_layout;
-    if (should_show)
-    {
-      _candidates_view.refresh_config(_config);
-      _keyeventhandler.dictionary_changed();
-    }
+    boolean should_show = _config.editor_config.show_candidate_row(script,
+        _config.suggestions_enabled, _config.split_layout);
     _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
-    if (!should_show)
-    {
-      /* The composing line is a sibling of the candidates row, so hiding the
-         row must hide the line too (password fields, split layouts...). */
-      View composing =
-        _keyboard_container_view.findViewById(R.id.candidates_composing);
-      if (composing != null)
-        composing.setVisibility(View.GONE);
-    }
+    _candidates_view.refresh_config(_config, script);
+    if (should_show)
+      _keyeventhandler.dictionary_changed();
   }
 
   /** Might re-create the keyboard view. [_keyboard_layout_view.setKeyboard()] and
@@ -288,7 +269,6 @@ public class Keyboard2 extends InputMethodService
     bg.setAlpha(_config.keyboardOpacity);
     _keyboard_container_view.setBackground(bg);
     _keyboard_layout_view.reset();
-    refresh_candidates_view();
   }
 
   private KeyboardData refresh_special_layout()
@@ -312,12 +292,10 @@ public class Keyboard2 extends InputMethodService
   {
     _config.editor_config.refresh(info, getResources());
     refresh_config();
-    _currentSpecialLayout = refresh_special_layout();
-    _keyboard_layout_view.setKeyboard(current_layout());
-    if (_config.editor_config.password_editor)
-      setSpecialLayout(loadLayout(R.xml.latn_qwerty_us));
-    refresh_composer();
+    _currentSpecialLayout = _config.editor_config.password_editor
+      ? loadLayout(R.xml.latn_qwerty_us) : refresh_special_layout();
     _keyeventhandler.started(_config);
+    apply_current_layout();
     setInputView(_keyboard_container_view);
     Logs.debug_startup_input_view(info, _config);
     startClipboardPolling();
@@ -466,9 +444,7 @@ public class Keyboard2 extends InputMethodService
   {
     refreshSubtypeImm();
     refresh_current_dictionary();
-    refresh_candidates_view();
-    _keyboard_layout_view.setKeyboard(current_layout());
-    refresh_composer();
+    apply_current_layout();
   }
 
   @Override
@@ -497,8 +473,7 @@ public class Keyboard2 extends InputMethodService
     if (Config.is_annotations_pref(_key))
       return;
     refresh_config();
-    _keyboard_layout_view.setKeyboard(current_layout());
-    refresh_composer();
+    apply_current_layout();
   }
 
   @Override
@@ -569,9 +544,7 @@ public class Keyboard2 extends InputMethodService
           break;
 
         case SWITCH_TEXT:
-          _currentSpecialLayout = null;
-          _keyboard_layout_view.setKeyboard(current_layout());
-          refresh_composer();
+          setSpecialLayout(null);
           break;
 
         case SWITCH_NUMERIC:

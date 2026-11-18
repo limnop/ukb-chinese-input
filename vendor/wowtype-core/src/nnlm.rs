@@ -1,7 +1,8 @@
-//! 字级神经语言模型：读微信输入法 Linux 版自带的 `nlrgpt2_nnlm.bin`，给整句候选重排。
+//! 字级神经语言模型：给整句候选重排。读两种文件，结构完全一样：
 //!
-//! 模型文件是腾讯的，**不随 WowType 分发**：用户本机装过微信输入法（或自己下载官方安装包）
-//! 才有。这里只放读取和推理代码。文件格式和模型结构见 `docs/DATA.md` 的 NNLM 一节，简单说：
+//! - WowType 自己训的 `nnlm.bin`（WTNN 格式，随安装包分发，训练和导出见 `tools/nnlm/train.py`）；
+//! - 微信输入法自带的 `nlrgpt2_nnlm.bin`：腾讯的，**不随 WowType 分发**，用户在设置里从微信输入法的
+//!   安装包导入。文件格式和模型结构见 `docs/DATA.md` 的 NNLM 一节，简单说：
 //!
 //! - 文件 = 1 字节标志 + u32 长度 + TFLite 模型 + 字表哈希表 + 末尾一段 JSON；
 //! - 模型是 3 层 GPT-2（d=256，4 头，词表 5594 个字，最长 512 位置），权重全是 float32；
@@ -64,6 +65,9 @@ pub struct Nnlm {
     lnf_g: Vec<f32>,
     lnf_b: Vec<f32>,
     vocab_size: usize,
+    /// WTNN 文件头里的说明（第一行是 `wowtype-data:` 版本标记，后面是 JSON：名字、版本、语料、许可证）；
+    /// 微信的模型没有。
+    meta: Option<String>,
     cache: Mutex<Cache>,
 }
 
@@ -81,6 +85,9 @@ impl Nnlm {
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
+        if data.starts_with(WTNN_MAGIC) {
+            return Self::from_wtnn(data);
+        }
         if data.len() < 16 || data[0] != 1 {
             bail!("不是 nlrgpt2_nnlm.bin（文件头不对）");
         }
@@ -149,12 +156,96 @@ impl Nnlm {
             lnf_g,
             lnf_b,
             vocab_size,
+            meta: None,
+            cache: Mutex::new(Cache::default()),
+        })
+    }
+
+    /// WowType 自己的格式（`tools/nnlm/train.py` 导出）：
+    /// `WTNN`、u32 版本、u32 说明长度 + 说明（第一行是 `wowtype-data:` 版本标记，后面是 JSON）、
+    /// u32 词表大小 V、u32 字数 N、N 组 (u32 码位, u32 编号)、
+    /// float16 权重（wte、wpe、每层 12 个、ln_f 两个，顺序和形状同推理代码）。
+    fn from_wtnn(data: &[u8]) -> Result<Self> {
+        let version = u32_at(data, 4)?;
+        if version != 1 {
+            bail!("WTNN 版本 {version} 不认识");
+        }
+        let meta_len = u32_at(data, 8)? as usize;
+        let meta = data
+            .get(12..12 + meta_len)
+            .context("WTNN 说明越界")?;
+        let meta = std::str::from_utf8(meta).ok().map(str::to_owned);
+        let mut at = 12 + meta_len;
+        let vocab_size = u32_at(data, at)? as usize;
+        let n = u32_at(data, at + 4)? as usize;
+        if !(1000..65536).contains(&vocab_size) || n > vocab_size {
+            bail!("WTNN 词表大小不对（{vocab_size}，{n} 个字）");
+        }
+        at += 8;
+        let mut vocab = HashMap::with_capacity(n);
+        for _ in 0..n {
+            let cp = u32_at(data, at)?;
+            let id = u32_at(data, at + 4)?;
+            at += 8;
+            if id as usize >= vocab_size {
+                bail!("WTNN 字表编号越界");
+            }
+            if let Some(ch) = char::from_u32(cp) {
+                vocab.insert(ch, id);
+            }
+        }
+        let mut take = |len: usize| -> Result<Vec<f32>> {
+            let bytes = data.get(at..at + 2 * len).context("WTNN 权重不完整")?;
+            at += 2 * len;
+            Ok(bytes
+                .chunks_exact(2)
+                .map(|b| f16_to_f32(u16::from_le_bytes([b[0], b[1]])))
+                .collect())
+        };
+        let wte = take(vocab_size * D)?;
+        let wpe = take(MAX_POS * D)?;
+        let mut layers = Vec::with_capacity(LAYERS);
+        for _ in 0..LAYERS {
+            layers.push(Layer {
+                ln1_g: take(D)?,
+                ln1_b: take(D)?,
+                attn_w: take(3 * D * D)?,
+                attn_b: take(3 * D)?,
+                proj_w: take(D * D)?,
+                proj_b: take(D)?,
+                ln2_g: take(D)?,
+                ln2_b: take(D)?,
+                fc_w: take(FF * D)?,
+                fc_b: take(FF)?,
+                out_w: take(D * FF)?,
+                out_b: take(D)?,
+            });
+        }
+        let lnf_g = take(D)?;
+        let lnf_b = take(D)?;
+        if [&wte, &wpe, &lnf_g].iter().any(|w| w.iter().any(|v| !v.is_finite())) {
+            bail!("WTNN 权重里有非有限数");
+        }
+        Ok(Self {
+            vocab,
+            wte,
+            wpe,
+            layers,
+            lnf_g,
+            lnf_b,
+            vocab_size,
+            meta,
             cache: Mutex::new(Cache::default()),
         })
     }
 
     pub fn vocab_size(&self) -> usize {
         self.vocab_size
+    }
+
+    /// 模型自带的说明（WTNN 的版本标记和 JSON）；微信的模型是 None。
+    pub fn meta(&self) -> Option<&str> {
+        self.meta.as_deref()
     }
 
     /// 字 -> 编号；不认识的字给 `<unk>`。
@@ -217,6 +308,27 @@ impl Nnlm {
             cache.evict();
         }
         total
+    }
+
+    /// 接在 prefix 后面、下一个字是 ch 的 log 概率（只算一步，同一个前缀算过就是查表）。
+    /// 联想用它按「接得上」排候选词：只看词的第一个字，几十个候选也只算一次前向。
+    pub fn next_char_logprob(&self, prefix: &[u32], ch: char) -> f32 {
+        if prefix.is_empty() || prefix.len() >= MAX_POS {
+            return 0.0;
+        }
+        let Ok(mut cache) = self.cache.lock() else {
+            return 0.0;
+        };
+        cache.clock += 1;
+        self.ensure(&mut cache, prefix);
+        let Some(state) = cache.states.get(prefix) else {
+            return 0.0;
+        };
+        let lp = self.logit(self.token(ch), &state.y) - state.lse;
+        if cache.states.len() > CACHE_CAP {
+            cache.evict();
+        }
+        lp
     }
 
     /// 下一个字的 log 概率分布里最大的几个（调试用）。
@@ -401,6 +513,31 @@ fn gelu(x: f32) -> f32 {
     0.5 * x * (1.0 + (C * (x + 0.044715 * x * x * x)).tanh())
 }
 
+const WTNN_MAGIC: &[u8; 4] = b"WTNN";
+
+/// IEEE 754 半精度 -> 单精度。
+fn f16_to_f32(h: u16) -> f32 {
+    let sign = ((h >> 15) as u32) << 31;
+    let exp = ((h >> 10) & 0x1f) as u32;
+    let frac = (h & 0x3ff) as u32;
+    let bits = match exp {
+        0 if frac == 0 => sign,
+        0 => {
+            // 非规格化数：规格化以后再拼
+            let mut e = 127 - 15 + 1;
+            let mut f = frac;
+            while f & 0x400 == 0 {
+                f <<= 1;
+                e -= 1;
+            }
+            sign | (e << 23) | ((f & 0x3ff) << 13)
+        }
+        0x1f => sign | 0x7f80_0000 | (frac << 13),
+        _ => sign | ((exp + 127 - 15) << 23) | (frac << 13),
+    };
+    f32::from_bits(bits)
+}
+
 fn u32_at(d: &[u8], at: usize) -> Result<u32> {
     let b = d.get(at..at + 4).context("越界")?;
     Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -565,6 +702,65 @@ fn read_tflite_tensors(d: &[u8]) -> Result<HashMap<String, (Vec<usize>, Vec<f32>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn f32_to_f16(v: f32) -> u16 {
+        // 测试里只用到 [-1, 1] 的规格化小数，截断就够
+        let bits = v.to_bits();
+        let sign = ((bits >> 16) & 0x8000) as u16;
+        if v == 0.0 {
+            return sign;
+        }
+        let exp = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+        sign | ((exp as u16) << 10) | ((bits >> 13) & 0x3ff) as u16
+    }
+
+    #[test]
+    fn half_precision() {
+        for v in [0.0f32, 1.0, -2.5, 0.000_061_035_156, 65504.0, 0.333_251_95] {
+            assert_eq!(f16_to_f32(f32_to_f16(v)), v, "{v}");
+        }
+        assert_eq!(f16_to_f32(0x0001), 5.960_464_5e-8); // 最小的非规格化数
+        assert!(f16_to_f32(0x7c00).is_infinite());
+    }
+
+    /// 造一个随机权重的 WTNN 文件：能读、打分是有限数、字表和说明都读出来；截断了要报错。
+    #[test]
+    fn reads_wtnn() {
+        let vocab_size = 1100usize;
+        let mut blob = Vec::new();
+        blob.extend_from_slice(b"WTNN");
+        blob.extend_from_slice(&1u32.to_le_bytes());
+        let meta = "wowtype-data: nnlm.bin 2026.1.1.0 test\n{\"name\":\"wowtype-nnlm\"}".as_bytes();
+        blob.extend_from_slice(&(meta.len() as u32).to_le_bytes());
+        blob.extend_from_slice(meta);
+        for v in [vocab_size as u32, 2] {
+            blob.extend_from_slice(&v.to_le_bytes());
+        }
+        for (cp, id) in [('你' as u32, 3u32), ('好' as u32, 4)] {
+            blob.extend_from_slice(&cp.to_le_bytes());
+            blob.extend_from_slice(&id.to_le_bytes());
+        }
+        let per_layer = 4 * D + 3 * D * D + 3 * D + D * D + D + 2 * FF * D + FF + D;
+        let total = vocab_size * D + MAX_POS * D + LAYERS * per_layer + 2 * D;
+        let mut seed = 7u32;
+        for _ in 0..total {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            let v = ((seed >> 8) % 2001) as f32 / 1000.0 - 1.0;
+            blob.extend_from_slice(&f32_to_f16(v * 0.05).to_le_bytes());
+        }
+        let model = Nnlm::from_bytes(&blob).expect("读得出来");
+        assert_eq!(model.vocab_size(), vocab_size);
+        assert_eq!(model.token('你'), 3);
+        assert_eq!(model.token('他'), UNK);
+        assert!(model.meta().unwrap().starts_with("wowtype-data: nnlm.bin 2026.1.1.0"));
+        assert!(crate::datamark::scan(&blob).is_some_and(|m| m.version == "2026.1.1.0"));
+        let s = model.score(&model.context_tokens("我说"), "你好");
+        assert!(s.is_finite() && s < 0.0, "{s}");
+        assert!(Nnlm::from_bytes(&blob[..blob.len() / 2]).is_err());
+        let mut bad = blob.clone();
+        bad[4] = 9;
+        assert!(Nnlm::from_bytes(&bad).is_err());
+    }
 
     /// 本机有模型文件时才跑（模型不随仓库分发）。WOWTYPE_NNLM 可指定路径。
     fn model() -> Option<Nnlm> {

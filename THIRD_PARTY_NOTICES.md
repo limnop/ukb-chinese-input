@@ -3,12 +3,14 @@
 ## WowType Rust core
 
 `vendor/wowtype-core/` is derived from [Gloridust/WowType](https://github.com/Gloridust/WowType),
-commit `38eb269989a4c54c96c4b5749a13294750498b5e`. The upstream `core/Cargo.toml`
+v0.6.0, commit `bb2a04fd573f1e5f2444ee68f8f71b7ea429b3c5`. The upstream `core/Cargo.toml`
 declares `MIT OR Apache-2.0`. The license texts are included in
 `vendor/wowtype-core/licenses/`.
 
 The core embeds emoji keywords derived from Unicode CLDR. Unicode's license is
 available at <https://www.unicode.org/license.txt>.
+The simplified-to-traditional conversion table is derived from OpenCC;
+its license is included in `vendor/wowtype-core/data/OPENCC-LICENSE`.
 
 ## Bundled Chinese dictionary and language model
 
@@ -19,7 +21,7 @@ The default WowType lexicon is built from
 U-mode component lookup uses `radical_pinyin.dict.yaml` from the same pinned
 rime-ice tree; its header credits [rime_radical_pinyin](https://github.com/mirtlecn/rime_radical_pinyin).
 The generated table preserves component readings and frequencies.
-Converters and hotwords come from the WowType core snapshot named above.
+Converters and hotwords remain pinned to the data revision in `vendor/wowtype-data/UPSTREAM.md`.
 The rime-ice license and exact data attribution are included in APK assets
 as `wowtype-data-LICENSE.txt` and `wowtype-data-SOURCE.txt`.
 

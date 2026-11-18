@@ -84,7 +84,9 @@ impl ModelSlot {
         }
     }
 
-    /// 还没载入（或上次失败）就起线程载入。模型不在磁盘上返回 false，不下载。
+    /// 还没载入（或上次失败）就起线程载入。模型不在磁盘上返回 false，不下载；
+    /// 载入的线程起不来也返回 false（状态记成失败，下次按热键再试）。
+    /// 返回 false 时给用户看的话见 [`ModelSlot::unavailable_hint`]。
     fn prepare(self: &Arc<Self>, dir: &Path) -> bool {
         {
             let mut state = self.state.lock().unwrap();
@@ -100,7 +102,7 @@ impl ModelSlot {
         }
         let slot = self.clone();
         let dir = dir.to_path_buf();
-        std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("wowtype-voice-model".into())
             .spawn(move || {
                 let result = wtlocal::load(&dir).map(|_| ());
@@ -112,9 +114,24 @@ impl ModelSlot {
                     }
                 };
                 slot.changed.notify_all();
-            })
-            .expect("spawn model thread");
+            });
+        if let Err(e) = spawned {
+            // 线程数到了上限、内存不够：这里是输入法（C++ / Swift）调进来的，不能 panic——
+            // panic 出不了 FFI 边界，整个输入法进程跟着没了
+            eprintln!("wowtype: 开不了载入语音模型的线程：{e}");
+            *self.state.lock().unwrap() = ModelState::Failed(format!("开不了载入线程（{e}）"));
+            self.changed.notify_all();
+            return false;
+        }
         true
+    }
+
+    /// [`ModelSlot::prepare`] 返回 false 时给用户看的原因：没下载，或者这次没载入成。
+    fn unavailable_hint(&self) -> String {
+        match &*self.state.lock().unwrap() {
+            ModelState::Failed(e) => format!("语音模型不可用：{e}"),
+            _ => MISSING_HINT.to_string(),
+        }
     }
 
     /// 等模型读进内存。
@@ -225,7 +242,8 @@ impl WowtypeVoice {
             let _ = tx.send(Msg::Cancel);
         }
         if !self.model.prepare(&self.dir) {
-            // 没有模型：只提示去设置里下载，不开麦克风、不下载
+            // 没有模型：只提示去设置里下载，不开麦克风、不下载。
+            // （载入的线程起不来也走这里，提示的是那个原因）
             self.session += 1;
             {
                 let mut shared = self.shared.lock().unwrap();
@@ -233,7 +251,8 @@ impl WowtypeVoice {
                 shared.voice_at = None;
                 shared.level = 0;
             }
-            self.fail(MISSING_HINT);
+            let hint = self.model.unavailable_hint();
+            self.fail(&hint);
             return;
         }
         self.session += 1;
@@ -641,5 +660,18 @@ mod tests {
         assert!(level_of(&[8000, -8000].repeat(160)) > 70);
         let quiet = level_of(&[60, -60].repeat(160));
         assert!(quiet > 0 && quiet < 40, "{quiet}");
+    }
+
+    #[test]
+    fn unavailable_hint_tells_missing_from_failed() {
+        let dir = std::env::temp_dir().join(format!("wowtype-voice-hint-{}", std::process::id()));
+        let voice = WowtypeVoice::new(dir);
+        *voice.model.state.lock().unwrap() = ModelState::Missing;
+        assert_eq!(voice.model.unavailable_hint(), MISSING_HINT);
+        // 载入的线程起不来时 prepare 记下的状态：提示原因，不是「去下载」
+        *voice.model.state.lock().unwrap() = ModelState::Failed("开不了载入线程（EAGAIN）".into());
+        assert_eq!(voice.model.code(), MODEL_FAILED);
+        let hint = voice.model.unavailable_hint();
+        assert!(hint.contains("开不了载入线程") && !hint.contains("下载"), "{hint}");
     }
 }

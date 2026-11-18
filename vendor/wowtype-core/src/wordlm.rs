@@ -18,25 +18,40 @@
 //! m × u32  cur 编号（同一 prev 内升序）
 //! m × f32  分数
 //! ```
+//!
+//! 版本标记（见 [`crate::datamark`]）：官方发布的模型词表 1 号词是 `wowtype-data: words.lm <版本> <来源>`，
+//! 没有搭配、回退分 0（λ = 1）。格式版本还是 1：0.4.0 及以前的读取代码把它当成一个普通的词，
+//! 输入里永远打不出这样的词，查不到它，读新文件照常；这里读到时把它认成标记、不放进词表的查找。
+//! 加标记以前发布的 lm-2026.11.09 没有这个词，按字节数认（[`crate::datamark::LEGACY_OFFICIAL_LM`]）。
+//! 训练完用 [`set_data_marker`] 加标记（`tools/datamark.py stamp` 是同样的做法）。
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
+use crate::datamark::{self, DataMarker};
 use crate::lm::LanguageModel;
 
 pub const MAGIC: &[u8; 4] = b"WTLM";
 pub const VERSION: u32 = 1;
 pub const BOS: &str = "<s>";
 
+/// 模型里没有的词，回退分最低给到这里（自然对数）。
+/// 实测（rime-ice + words.lm）：不设下限时中低频词 top1 82.5%、整句 84.8%，−1.5 时 87.8%、86.2%；
+/// 再高（−0.5）中低频 88.8%，但整句回落到 84.8%、简拼也降。设成 0 以前出过「分崩离兮」。
+pub const OOV_FLOOR: f64 = -1.5;
+const EMPTY_SLOT: u32 = 0;
+
 pub struct WordLm {
-    ids: HashMap<String, u32>,
+    /// 词 -> 编号的开放寻址表：存「编号 + 1」，0 是空位。和词本身分开放，
+    /// 束搜索每次查词不用为 String 分配内存、算 SipHash（#227）
+    slots: Vec<u32>,
     words: Vec<String>,
     backoff: Vec<f32>,
     starts: Vec<u32>,
     curs: Vec<u32>,
     scores: Vec<f32>,
+    marker: Option<DataMarker>,
 }
 
 impl WordLm {
@@ -58,14 +73,38 @@ impl WordLm {
         let n = r.u32()? as usize;
         let m = r.u32()? as usize;
         let mut words = Vec::with_capacity(n);
-        let mut ids = HashMap::with_capacity(n);
+        let mut marker = None;
         for i in 0..n {
             let len = r.take(1)?[0] as usize;
             let w = std::str::from_utf8(r.take(len)?)
                 .context("词表不是 UTF-8")?
                 .to_string();
-            ids.insert(w.clone(), i as u32);
+            if i == 1 && w.starts_with(datamark::KEY) {
+                // 版本标记：不当词查（下面建查找表时跳过它）
+                marker = DataMarker::parse(&w);
+            }
             words.push(w);
+        }
+        let mut slot_count = 1usize;
+        while slot_count < n.saturating_mul(2).max(2) {
+            slot_count = slot_count.checked_mul(2).context("词表太大")?;
+        }
+        let mut slots = vec![EMPTY_SLOT; slot_count];
+        for (id, word) in words.iter().enumerate() {
+            // 版本标记留在 words 里（搭配的编号不变），但不进查找表
+            if id == 1 && word.starts_with(datamark::KEY) {
+                continue;
+            }
+            let mut slot = hash_word(word) as usize & (slot_count - 1);
+            loop {
+                let stored = slots[slot];
+                // 空位放下；同一个词出现两次时用后面的编号（和原来 HashMap::insert 一样）
+                if stored == EMPTY_SLOT || words[stored as usize - 1] == *word {
+                    slots[slot] = id as u32 + 1;
+                    break;
+                }
+                slot = (slot + 1) & (slot_count - 1);
+            }
         }
         let backoff = r.f32s(n)?;
         let starts = r.u32s(n + 1)?;
@@ -78,13 +117,19 @@ impl WordLm {
             bail!("文件末尾多了 {} 字节", data.len() - r.at);
         }
         Ok(Self {
-            ids,
+            slots,
             words,
             backoff,
             starts,
             curs,
             scores,
+            marker,
         })
+    }
+
+    /// 词表里的版本标记（官方发布的模型才有；加标记以前的 lm-2026.11.09 没有）。
+    pub fn data_marker(&self) -> Option<&DataMarker> {
+        self.marker.as_ref()
     }
 
     pub fn words(&self) -> usize {
@@ -103,12 +148,37 @@ impl WordLm {
         let row = &self.curs[a..b];
         row.binary_search(&cur).ok().map(|i| self.scores[a + i])
     }
+
+    fn id(&self, word: &str) -> Option<u32> {
+        let mask = self.slots.len() - 1;
+        let mut slot = hash_word(word) as usize & mask;
+        loop {
+            let stored = self.slots[slot];
+            if stored == EMPTY_SLOT {
+                return None;
+            }
+            let id = stored - 1;
+            if self.words[id as usize].as_bytes() == word.as_bytes() {
+                return Some(id);
+            }
+            slot = (slot + 1) & mask;
+        }
+    }
+}
+
+fn hash_word(word: &str) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in word.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    hash
 }
 
 impl LanguageModel for WordLm {
     fn score(&self, prev: Option<&str>, cur: &str) -> f64 {
         // 前一个词不在模型里：没有可用的信息，给 0
-        let Some(&p) = self.ids.get(prev.unwrap_or(BOS)) else {
+        let Some(p) = self.id(prev.unwrap_or(BOS)) else {
             return 0.0;
         };
         // 当前词不在模型里（语料里太少见、被裁掉了）：按「没见过的搭配」给回退分（≤ 0），
@@ -116,8 +186,10 @@ impl LanguageModel for WordLm {
         // 结果模型不认识的冷僻词、错字词反而比常用词分高：
         // fenbenglixi 首选成了「分崩离兮」，pingwenguodu 成了「平稳过度」。
         // 不再额外罚分：实测再罚会把这类词所在的整句挤出前几名（日常句 90.6% -> 87.7%）。
-        let Some(&c) = self.ids.get(cur) else {
-            return self.backoff[p as usize] as f64;
+        // 回退分再设个下限 OOV_FLOOR：句首的回退分低到 −4.2，热词表里补的新词（大模型、黑神话、
+        // 永远的神）都不在模型里，30000 的词频实际只顶 450 用。
+        let Some(c) = self.id(cur) else {
+            return (self.backoff[p as usize] as f64).max(OOV_FLOOR);
         };
         match self.pair(p, c) {
             Some(s) => s as f64,
@@ -125,15 +197,19 @@ impl LanguageModel for WordLm {
         }
     }
 
+    fn knows_word(&self, word: &str) -> Option<bool> {
+        Some(self.id(word).is_some())
+    }
+
     fn has_bigram(&self, prev: &str, cur: &str) -> bool {
-        match (self.ids.get(prev), self.ids.get(cur)) {
-            (Some(&p), Some(&c)) => self.pair(p, c).is_some(),
+        match (self.id(prev), self.id(cur)) {
+            (Some(p), Some(c)) => self.pair(p, c).is_some(),
             _ => false,
         }
     }
 
     fn top_next(&self, prev: &str, limit: usize) -> Vec<(String, f64)> {
-        let Some(&p) = self.ids.get(prev) else {
+        let Some(p) = self.id(prev) else {
             return Vec::new();
         };
         let (a, b) = (
@@ -181,6 +257,75 @@ impl<'a> Reader<'a> {
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect())
     }
+}
+
+/// 给模型文件加上（或换掉）版本标记：词表 1 号插入标记，原来 1 号及以后的词编号加一；
+/// 已经有标记时只换掉那个词。格式版本不变，0.4.0 的读取代码照样能读。
+pub fn set_data_marker(data: &[u8], marker: &DataMarker) -> Result<Vec<u8>> {
+    let body = marker.body();
+    if body.len() > 255 {
+        bail!("标记太长（{} 字节，最多 255）", body.len());
+    }
+    let mut r = Reader { d: data, at: 0 };
+    if r.take(4)? != MAGIC {
+        bail!("不是 WowType 词级语言模型");
+    }
+    let version = r.u32()?;
+    if version != VERSION {
+        bail!("版本 {version} 不认识");
+    }
+    let n = r.u32()? as usize;
+    let m = r.u32()? as usize;
+    if n == 0 {
+        bail!("词表是空的（没有 <s>）");
+    }
+    let mut words = Vec::with_capacity(n);
+    for _ in 0..n {
+        let len = r.take(1)?[0] as usize;
+        words.push(r.take(len)?);
+    }
+    let backoff = r.take(n * 4)?;
+    let starts = r.u32s(n + 1)?;
+    let curs = r.u32s(m)?;
+    let scores = r.take(m * 4)?;
+    if r.at != data.len() {
+        bail!("文件末尾多了 {} 字节", data.len() - r.at);
+    }
+    let has = n > 1 && words[1].starts_with(datamark::KEY.as_bytes());
+
+    let mut out = Vec::with_capacity(data.len() + body.len() + 16);
+    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(&VERSION.to_le_bytes());
+    out.extend_from_slice(&((n + usize::from(!has)) as u32).to_le_bytes());
+    out.extend_from_slice(&(m as u32).to_le_bytes());
+    for (i, w) in words.iter().enumerate() {
+        if i == 1 && has {
+            continue;
+        }
+        out.push(w.len() as u8);
+        out.extend_from_slice(w);
+        if i == 0 {
+            out.push(body.len() as u8);
+            out.extend_from_slice(body.as_bytes());
+        }
+    }
+    out.extend_from_slice(&backoff[..4]);
+    if !has {
+        out.extend_from_slice(&0f32.to_le_bytes());
+    }
+    out.extend_from_slice(&backoff[4..]);
+    for (i, s) in starts.iter().enumerate() {
+        out.extend_from_slice(&s.to_le_bytes());
+        if i == 1 && !has {
+            out.extend_from_slice(&s.to_le_bytes()); // 标记那一行是空的
+        }
+    }
+    for &c in &curs {
+        let c = if has || c == 0 { c } else { c + 1 };
+        out.extend_from_slice(&c.to_le_bytes());
+    }
+    out.extend_from_slice(scores);
+    Ok(out)
 }
 
 /// 训练用：一元、二元计数 -> 模型文件。
@@ -361,5 +506,62 @@ mod tests {
             lm.score(Some("明天"), "面")
         );
         assert_eq!(lm.top_next("明天", 1)[0].0, "见");
+    }
+
+    /// 加了标记的模型分数一样；标记能读出来、能换；文件开头就能认出标记。
+    #[test]
+    fn data_marker_round_trip() {
+        let words: Vec<String> = ["<s>", "我们", "明天", "见", "面"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let key = |a: u64, b: u64| a << 32 | b;
+        let counts = Counts {
+            words,
+            unigram: vec![10, 10, 9, 6, 50],
+            history: vec![10, 8, 7, 0, 0],
+            bigram: vec![(key(0, 1), 10), (key(1, 2), 8), (key(2, 3), 6), (key(2, 1), 3)],
+        };
+        let (bytes, _, _) = build(&counts, BuildConfig::default()).unwrap();
+        let plain = WordLm::from_bytes(&bytes).unwrap();
+        assert!(plain.data_marker().is_none());
+        assert!(datamark::scan(&bytes).is_none());
+
+        let marker = DataMarker::new("words.lm", "2026.11.20.0", "lm-2026.11.20 测试").unwrap();
+        let marked = set_data_marker(&bytes, &marker).unwrap();
+        let lm = WordLm::from_bytes(&marked).unwrap();
+        assert_eq!(lm.data_marker(), Some(&marker));
+        assert_eq!(datamark::scan(&marked).as_ref(), Some(&marker));
+        assert_eq!(lm.words(), plain.words() + 1);
+        assert_eq!(lm.bigrams(), plain.bigrams());
+        let probes = [
+            (None, "我们"),
+            (Some("我们"), "明天"),
+            (Some("明天"), "见"),
+            (Some("明天"), "我们"),
+            (Some("明天"), "面"),
+            (Some("见"), "面"),
+            (Some("明天"), "不认识"),
+            (Some("不认识"), "见"),
+        ];
+        for (prev, cur) in probes {
+            assert_eq!(lm.score(prev, cur), plain.score(prev, cur), "{prev:?} {cur}");
+        }
+        assert_eq!(lm.top_next("明天", 5), plain.top_next("明天", 5));
+        assert_eq!(lm.top_next("<s>", 5), plain.top_next("<s>", 5));
+        assert_eq!(lm.knows_word(&marker.body()), Some(false));
+
+        // 换标记：词数不变
+        let newer = DataMarker::new("words.lm", "2026.12.01.0", "").unwrap();
+        let again = set_data_marker(&marked, &newer).unwrap();
+        let lm2 = WordLm::from_bytes(&again).unwrap();
+        assert_eq!(lm2.data_marker(), Some(&newer));
+        assert_eq!(lm2.words(), lm.words());
+        assert_eq!(lm2.score(Some("明天"), "见"), plain.score(Some("明天"), "见"));
+        // 坏文件、多出来的字节：报错，不乱写
+        assert!(set_data_marker(&bytes[..bytes.len() - 1], &marker).is_err());
+        let mut longer = bytes.clone();
+        longer.push(0);
+        assert!(set_data_marker(&longer, &marker).is_err());
     }
 }

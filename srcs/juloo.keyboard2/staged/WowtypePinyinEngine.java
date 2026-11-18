@@ -15,7 +15,8 @@ public final class WowtypePinyinEngine
 {
   private static final String LEXICON_ASSET = "wowtype_lexicon.tsv";
   private static volatile long _engine = 0;
-  private static volatile boolean _loading = false;
+  private static boolean _loading = false;
+  private static Runnable _on_ready;
   private static String _history_path;
   private static String _user_dict_path;
   private static SharedPreferences _prefs;
@@ -36,14 +37,15 @@ public final class WowtypePinyinEngine
   /** Prepare the data and native engine off the keyboard thread. */
   public static void preload(final Context context)
   {
-    if (_engine != 0 || _loading)
-      return;
-    synchronized (WowtypePinyinEngine.class)
-    {
-      if (_engine != 0 || _loading)
-        return;
-      _loading = true;
-    }
+    preload(context, null);
+  }
+
+  public static synchronized void preload(final Context context, Runnable onReady)
+  {
+    if (Pinyin.engine != null) return;
+    if (onReady != null) _on_ready = onReady;
+    if (_loading) return;
+    _loading = true;
     final Context app = context.getApplicationContext();
     new Thread(new Runnable()
         {
@@ -86,7 +88,16 @@ public final class WowtypePinyinEngine
             {
               android.util.Log.e("WowType", "Engine initialization failed", e);
             }
-            finally { _loading = false; }
+            finally
+            {
+              synchronized (WowtypePinyinEngine.class)
+              {
+                _loading = false;
+                if (Pinyin.engine != null && _on_ready != null)
+                  new android.os.Handler(app.getMainLooper()).post(_on_ready);
+                _on_ready = null;
+              }
+            }
           }
         }, "wowtype-pinyin").start();
   }

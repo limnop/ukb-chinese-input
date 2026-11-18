@@ -65,7 +65,7 @@ Useful links.
   <row>
     <key width="1.5" role="action" c="shift" ne="loc capslock"/>
     <key c="z"/>
-    <key c="x" ne="loc ？"/>
+    <key c="x" nw="「" ne="loc ？" se="」"/>
     <key c="c" ne="&lt;" sw="."/>
     <key c="v" ne="&gt;" sw=","/>
     <key c="b" ne="\?" sw="/"/>

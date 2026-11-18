@@ -27,10 +27,8 @@ pub struct BeamConfig {
     pub max_expansions_per_state: usize,
     /// 未登录音节的惩罚。越大越倾向词典里的词。
     pub unknown_cost: f64,
-    /// 语言模型权重。
+    /// 语言模型权重（词典代价的权重固定是 1）。
     pub lm_weight: f64,
-    /// 词典代价权重。
-    pub lexicon_weight: f64,
     /// 每处纠错的惩罚（自然对数）。
     pub typo_cost: f64,
     /// 补全每多出一个字母的惩罚（自然对数）。
@@ -39,6 +37,9 @@ pub struct BeamConfig {
     pub max_typos: usize,
     /// 一个词最多纠几处。
     pub max_typos_per_word: usize,
+    /// 两键按反（meiyuo -> meiyou）比按错一个键（meiguo）少罚多少：手快时打反是最常见的错，
+    /// 也很少碰巧打出别的常用词。
+    pub swap_discount: f64,
     /// 全拼混简拼（k yi -> 可以，yong z wen -> 用中文）时，每个只打了声母的音节的惩罚。
     ///
     /// 错键的全拼常常也能读成混简拼（jifu 打成 jifk -> 积分卡），罚得太轻会把纠错挤下去，
@@ -62,12 +63,13 @@ impl Default for BeamConfig {
             max_word_syllables: 6,
             max_expansions_per_state: 32,
             unknown_cost: 18.0,
-            lm_weight: 1.0,
-            lexicon_weight: 1.0,
-            typo_cost: 6.0,
-            completion_cost: 1.2,
+            // 下面三个（tools/tune_weights.py 在评测集上自动调的，2026-11-17，见 docs/ENGINE.md「排序参数」）：原来是 1.0 / 6.0 / 1.2
+            lm_weight: 0.85,
+            typo_cost: 8.0,
+            completion_cost: 1.5,
             max_typos: 2,
             max_typos_per_word: 1,
+            swap_discount: 1.5,
             abbrev_cost: 2.0,
             tail_abbrev_cost: 4.0,
             rare_ext_chars: false,
@@ -90,6 +92,8 @@ pub struct BeamWord {
     pub ends_abbrev: bool,
     /// 这个词用了几处纠错。
     pub typos: usize,
+    /// 其中几处是两键按反。
+    pub swaps: usize,
     /// 补全多出的字母数（用户还没打的部分）。
     pub completion: usize,
     /// 在输入里的字母区间 [start, end)。
@@ -216,7 +220,7 @@ pub fn beam_search(
                 } else {
                     (0.0, 0)
                 };
-                let typo_cost = config.typo_cost * word.typos as f64
+                let typo_cost = (config.typo_cost * word.typos as f64 - config.swap_discount * word.swaps as f64)
                     + config.completion_cost * word.completion as f64
                     + abbrev_penalty(graph, word, config);
                 let next = Node {
@@ -324,7 +328,7 @@ pub fn first_words(
     .filter(|s| s.word.known && s.word.end < n)
     .map(|s| {
         let cost = s.lexical
-            + config.typo_cost * s.word.typos as f64
+            + (config.typo_cost * s.word.typos as f64 - config.swap_discount * s.word.swaps as f64)
             + abbrev_penalty(graph, &s.word, config);
         (s.word, cost)
     })
@@ -376,7 +380,7 @@ pub fn all_first_words(
     .filter(|s| s.word.known)
     .map(|s| {
         let cost = s.lexical
-            + config.typo_cost * s.word.typos as f64
+            + (config.typo_cost * s.word.typos as f64 - config.swap_discount * s.word.swaps as f64)
             + config.completion_cost * s.word.completion as f64
             + abbrev_penalty(graph, &s.word, config);
         (s.word, cost)
@@ -411,6 +415,7 @@ fn collect_spans(
         pos,
         max_syllables,
         0,
+        0,
         &mut keys,
         &mut found,
         config,
@@ -430,7 +435,7 @@ fn collect_spans(
         let mut group = by_end.remove(&end).unwrap_or_default();
         group.sort_by(|a, b| {
             let extra = |s: &Span| {
-                config.typo_cost * s.word.typos as f64
+                (config.typo_cost * s.word.typos as f64 - config.swap_discount * s.word.swaps as f64)
                     + config.completion_cost * s.word.completion as f64
             };
             let ca = a.lexical + extra(a);
@@ -438,11 +443,22 @@ fn collect_spans(
             ca.total_cmp(&cb)
                 .then_with(|| a.word.text.cmp(&b.word.text))
         });
-        // 同一个词可能经由不同切分到达，留代价最低的那个
-        let mut seen: HashMap<String, ()> = HashMap::new();
-        group.retain(|s| seen.insert(s.word.text.clone(), ()).is_none());
-        group.truncate(per_span);
-        out.extend(group);
+        // 同一个词可能经由不同切分到达，留代价最低的那个。上面已经
+        // 按代价排序；只在最多 `per_span` 个保留项里做线性比较，避免
+        // 为每个候选克隆 String 并重新计算哈希。
+        let mut unique = Vec::with_capacity(per_span.min(group.len()));
+        for span in group {
+            if unique
+                .iter()
+                .all(|kept: &Span| kept.word.text != span.word.text)
+            {
+                unique.push(span);
+                if unique.len() >= per_span {
+                    break;
+                }
+            }
+        }
+        out.extend(unique);
     }
 
     // 未知音节兜底：每条精确边都允许直接当作一个未登录词，保证任何合法输入都能走到底。
@@ -466,6 +482,7 @@ fn collect_dfs(
     pos: usize,
     max_syllables: usize,
     typos: usize,
+    swaps: usize,
     keys: &mut Vec<SyllableQuery>,
     out: &mut Vec<Span>,
     config: &BeamConfig,
@@ -473,6 +490,7 @@ fn collect_dfs(
 ) {
     for edge in graph.edges_from(pos) {
         let edge_typos = typos + usize::from(edge.typo);
+        let edge_swaps = swaps + usize::from(edge.typo && edge.swap);
         if edge_typos > config.max_typos_per_word {
             continue;
         }
@@ -500,8 +518,8 @@ fn collect_dfs(
             pinyin_of(keys)
         };
         for entry in entries {
-            let lexical = config.lexicon_weight * lexicon.cost(&entry);
             out.push(Span {
+                lexical: lexicon.cost(&entry),
                 word: BeamWord {
                     text: entry.word,
                     pinyin: pinyin.clone(),
@@ -512,11 +530,11 @@ fn collect_dfs(
                     abbrev,
                     ends_abbrev: keys.last().is_some_and(|q| q.is_jianpin()),
                     typos: edge_typos,
+                    swaps: edge_swaps,
                     completion: usize::from(edge.completion),
                     start,
                     end: edge.end,
                 },
-                lexical,
             });
         }
         if keys.len() < max_syllables && lexicon.has_longer(keys) {
@@ -527,6 +545,7 @@ fn collect_dfs(
                 edge.end,
                 max_syllables,
                 edge_typos,
+                edge_swaps,
                 keys,
                 out,
                 config,
@@ -562,6 +581,7 @@ fn unknown_word(edge: &Edge) -> BeamWord {
         abbrev: usize::from(query.is_jianpin()),
         ends_abbrev: query.is_jianpin(),
         typos: 0,
+        swaps: 0,
         completion: 0,
         start: edge.start,
         end: edge.end,

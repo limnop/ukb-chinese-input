@@ -54,7 +54,7 @@ pub struct WowtypeCandidates {
 
 impl WowtypeCandidates {
     /// 只有文本和分数的结果（预测、符号）。
-    fn plain(texts: Vec<CString>, scores: Vec<f64>) -> Self {
+    pub(crate) fn plain(texts: Vec<CString>, scores: Vec<f64>) -> Self {
         let n = texts.len();
         Self {
             texts,
@@ -90,7 +90,10 @@ pub unsafe extern "C" fn wowtype_engine_new(
             Some(path) if !path.is_empty() => crate::lm::load_lm(path)?,
             _ => Arc::new(BigramLm::default()),
         };
-        Ok(Engine::new(lexicon, lm))
+        let engine = Engine::new(lexicon, lm);
+        // 外壳都在后台线程里载入引擎：模糊音索引（兜底默认开）也在这时建好，不留到第一次按键
+        engine.prepare_fuzzy();
+        Ok(engine)
     })();
 
     match result {
@@ -402,6 +405,69 @@ pub unsafe extern "C" fn wowtype_engine_save_history(
     }
 }
 
+/// 在后台存用户词库（1.11）：在锁里抄一份就返回，写文件在存盘的线程上。返回 0 交出去了，-1 参数不对。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_engine_save_user_dict_async(
+    engine: *mut WowtypeEngineHandle,
+    path: *const c_char,
+) -> c_int {
+    unsafe { save_async(engine, path, |engine, path| engine.save_user_dict_async(path)) }
+}
+
+/// 在后台存用户输入习惯（1.11），同 [`wowtype_engine_save_user_dict_async`]。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_engine_save_history_async(
+    engine: *mut WowtypeEngineHandle,
+    path: *const c_char,
+) -> c_int {
+    unsafe { save_async(engine, path, |engine, path| engine.save_history_async(path)) }
+}
+
+unsafe fn save_async(
+    engine: *mut WowtypeEngineHandle,
+    path: *const c_char,
+    save: impl FnOnce(&Engine, &str) -> anyhow::Result<()>,
+) -> c_int {
+    if engine.is_null() {
+        set_last_error("engine is null");
+        return -1;
+    }
+    let Some(path) = (unsafe { cstr_to_str(path) }).filter(|p| !p.is_empty()) else {
+        set_last_error("path is null, empty or not utf8");
+        return -1;
+    };
+    match save(&unsafe { &*engine }.engine, path) {
+        Ok(()) => 0,
+        Err(e) => {
+            set_last_error(format!("{e:#}"));
+            -1
+        }
+    }
+}
+
+/// 等后台存盘写完（1.11）。timeout_ms 小于 0 一直等，否则最多等这么久（0 只看一眼）。
+/// 返回 0：都写完了，上次调用以后交的都写成了；1：还没写完；-1：上次调用以后有写失败的
+/// （原因在 wowtype_last_error，只报一次），或者 engine 是 NULL。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_engine_save_wait(
+    engine: *mut WowtypeEngineHandle,
+    timeout_ms: c_int,
+) -> c_int {
+    let Some(handle) = (unsafe { engine.as_ref() }) else {
+        set_last_error("engine is null");
+        return -1;
+    };
+    let timeout = u64::try_from(timeout_ms).ok().map(std::time::Duration::from_millis);
+    match handle.engine.save_wait(timeout) {
+        crate::saver::SaveStatus::Done => 0,
+        crate::saver::SaveStatus::Pending => 1,
+        crate::saver::SaveStatus::Failed(e) => {
+            set_last_error(e);
+            -1
+        }
+    }
+}
+
 /// 读回用户输入习惯，返回条数，-1 表示出错（文件不存在也是 -1）。
 #[no_mangle]
 pub unsafe extern "C" fn wowtype_engine_load_history(
@@ -513,6 +579,51 @@ pub unsafe extern "C" fn wowtype_engine_load_nnlm(
             -1
         }
     }
+}
+
+/// 只检查文件是不是读得出来的字级神经语言模型，不载入引擎。返回字表大小，失败返回 -1。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_nnlm_check(path: *const c_char) -> c_int {
+    let Some(path) = (unsafe { cstr_to_str(path) }) else {
+        set_last_error("path is null or not utf8");
+        return -1;
+    };
+    match std::panic::catch_unwind(|| crate::nnlm::Nnlm::load(path)) {
+        Ok(Ok(model)) => model.vocab_size().min(c_int::MAX as usize) as c_int,
+        Ok(Err(e)) => {
+            set_last_error(format!("{e:#}"));
+            -1
+        }
+        Err(_) => {
+            set_last_error("模型文件格式不对");
+            -1
+        }
+    }
+}
+
+/// 混上领域词级模型（用户自己训的 words.domain.lm）。path 为 NULL/空串时去掉。
+/// 再调一次是换掉上一个。返回 0 成功，-1 失败（原来的模型不动）。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_engine_set_domain_lm(
+    engine: *mut WowtypeEngineHandle,
+    path: *const c_char,
+) -> c_int {
+    let Some(handle) = (unsafe { engine.as_mut() }) else {
+        set_last_error("engine handle is null");
+        return -1;
+    };
+    let model = match unsafe { cstr_to_str(path) } {
+        Some(path) if !path.is_empty() => match crate::lm::load_lm(path) {
+            Ok(model) => Some(model),
+            Err(e) => {
+                set_last_error(format!("{e:#}"));
+                return -1;
+            }
+        },
+        _ => None,
+    };
+    handle.engine.set_domain_lm(model);
+    0
 }
 
 /// 开关模糊音（z/zh、an/ang 等）。返回 0 成功，-1 失败。
@@ -641,6 +752,30 @@ pub unsafe extern "C" fn wowtype_engine_load_conversion(
     };
     match unsafe { &*engine }.engine.load_conversion(path) {
         Ok(n) => n as c_int,
+        Err(e) => {
+            set_last_error(format!("{e:#}"));
+            -1
+        }
+    }
+}
+
+/// 载入五笔码表（`wubi86.tsv`：码<TAB>词<TAB>频次），替换上一次载入的，返回条数；失败返回 -1，
+/// 原来载入的不动。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_engine_load_wubi(
+    engine: *mut WowtypeEngineHandle,
+    path: *const c_char,
+) -> c_int {
+    if engine.is_null() {
+        set_last_error("engine is null");
+        return -1;
+    }
+    let Some(path) = (unsafe { cstr_to_str(path) }) else {
+        set_last_error("path is null or not utf8");
+        return -1;
+    };
+    match unsafe { &*engine }.engine.load_wubi(path) {
+        Ok(n) => c_int::try_from(n).unwrap_or(c_int::MAX),
         Err(e) => {
             set_last_error(format!("{e:#}"));
             -1
@@ -895,53 +1030,8 @@ pub unsafe extern "C" fn wowtype_engine_emoji_search(
         set_last_error("query is null or not utf8");
         return ptr::null_mut();
     };
-    let query = query.trim();
-    let results: Vec<String> = if query.is_empty() {
-        crate::emoji::all()
-            .into_iter()
-            .map(str::to_string)
-            .collect()
-    } else {
-        let mut words: Vec<String> = Vec::new();
-        if let Some(handle) = unsafe { engine.as_ref() } {
-            if query.bytes().all(|b| b.is_ascii_alphabetic() || b == b'\'') {
-                let outcome =
-                    panic::catch_unwind(panic::AssertUnwindSafe(|| handle.engine.try_input(query)));
-                if let Ok(Ok(candidates)) = outcome {
-                    words = candidates
-                        .into_iter()
-                        .filter(|c| c.consumed >= query.len() && !c.text.is_ascii())
-                        .map(|c| c.text)
-                        .take(8)
-                        .collect();
-                }
-            } else if !query.is_ascii() {
-                words.push(query.to_string());
-            }
-        }
-        let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-        let mut out: Vec<String> = Vec::new();
-        let add = |items: Vec<&str>, out: &mut Vec<String>| {
-            for item in items {
-                if !out.iter().any(|x| x == item) {
-                    out.push(item.to_string());
-                }
-            }
-        };
-        let symbols = crate::symbols::search(query, limit);
-        let (named, prefixed): (Vec<_>, Vec<_>) =
-            symbols.into_iter().partition(|s| s.names.contains(&query));
-        // 符号名完全对上的、关键词完全对上的 emoji、以名字开头的符号、英文、关键词里包含这个词的
-        add(named.into_iter().map(|s| s.text).collect(), &mut out);
-        add(crate::emoji::search_words_exact(&refs, limit), &mut out);
-        add(prefixed.into_iter().map(|s| s.text).collect(), &mut out);
-        add(crate::emoji::search_english(query, limit), &mut out);
-        add(
-            crate::emoji::search_words_containing(&refs, limit),
-            &mut out,
-        );
-        out
-    };
+    let engine = unsafe { engine.as_ref() }.map(|handle| &handle.engine);
+    let results = crate::emoji::panel_search(engine, query, limit);
     let texts: Vec<CString> = results
         .into_iter()
         .take(limit.max(1))
@@ -1073,6 +1163,59 @@ pub unsafe extern "C" fn wowtype_segment_input(
     }
 }
 
+thread_local! {
+    static CUSTOM_CODE: RefCell<CString> = RefCell::new(CString::default());
+}
+
+/// 自定义词的编码整理（设置界面加词、导入用）。pinyin_only 非 0 时只认拼音（Ni Hǎo、nihao、
+/// ni3hao3 -> ni hao），否则不是拼音但全是字母的（mail）也行（小写）。不合法返回 NULL；
+/// 返回的串在同一线程下一次调用本函数或 wowtype_guess_pinyin 前有效。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_custom_code(
+    text: *const c_char,
+    pinyin_only: c_int,
+) -> *const c_char {
+    let Some(text) = (unsafe { cstr_to_str(text) }) else {
+        return ptr::null();
+    };
+    let code = if pinyin_only != 0 {
+        crate::lexicon::normalize_pinyin(text)
+    } else {
+        crate::lexicon::normalize_code(text)
+    };
+    match code.and_then(|s| CString::new(s).ok()) {
+        Some(code) => CUSTOM_CODE.with(|slot| {
+            *slot.borrow_mut() = code;
+            slot.borrow().as_ptr()
+        }),
+        None => ptr::null(),
+    }
+}
+
+/// 在词库原文（拼音<TAB>词<TAB>频次）里猜词的拼音，整理成空格分开的音节；猜不出返回 NULL。
+/// 返回的串在同一线程下一次调用本函数或 wowtype_custom_code 前有效。
+#[no_mangle]
+pub unsafe extern "C" fn wowtype_guess_pinyin(
+    lexicon: *const c_char,
+    len: usize,
+    word: *const c_char,
+) -> *const c_char {
+    let Some(word) = (unsafe { cstr_to_str(word) }) else {
+        return ptr::null();
+    };
+    if lexicon.is_null() || len == 0 {
+        return ptr::null();
+    }
+    let lexicon = unsafe { std::slice::from_raw_parts(lexicon.cast::<u8>(), len) };
+    match crate::lexicon::guess_pinyin(lexicon, word).and_then(|s| CString::new(s).ok()) {
+        Some(code) => CUSTOM_CODE.with(|slot| {
+            *slot.borrow_mut() = code;
+            slot.borrow().as_ptr()
+        }),
+        None => ptr::null(),
+    }
+}
+
 /// 最近一次错误。返回的指针在下一次调用本 API 前有效。
 #[no_mangle]
 pub extern "C" fn wowtype_last_error() -> *const c_char {
@@ -1087,7 +1230,7 @@ pub extern "C" fn wowtype_abi_version() -> c_int {
 
 /// C 接口版本，和 `wowtype_core.h` 里的 `WOWTYPE_ABI_VERSION_*` 一致（测试会比对）。
 pub const ABI_VERSION_MAJOR: c_int = 1;
-pub const ABI_VERSION_MINOR: c_int = 9;
+pub const ABI_VERSION_MINOR: c_int = 12;
 
 /// WowType 版本号字符串。
 #[no_mangle]
@@ -1144,7 +1287,17 @@ mod tests {
         };
         assert_eq!(read("WOWTYPE_ABI_VERSION_MAJOR"), ABI_VERSION_MAJOR);
         assert_eq!(read("WOWTYPE_ABI_VERSION_MINOR"), ABI_VERSION_MINOR);
-        assert_eq!(wowtype_abi_version(), 1009);
+        assert_eq!(wowtype_abi_version(), 1012);
+    }
+
+    #[test]
+    fn nnlm_check_rejects_bad_files() {
+        assert_eq!(unsafe { wowtype_nnlm_check(ptr::null()) }, -1);
+        let missing = CString::new("/nonexistent/nlrgpt2_nnlm.bin").unwrap();
+        assert_eq!(unsafe { wowtype_nnlm_check(missing.as_ptr()) }, -1);
+        // 别的文件（词库）不是模型
+        let lexicon = CString::new(concat!(env!("CARGO_MANIFEST_DIR"), "/data/demo_lexicon.tsv")).unwrap();
+        assert_eq!(unsafe { wowtype_nnlm_check(lexicon.as_ptr()) }, -1);
     }
 }
 

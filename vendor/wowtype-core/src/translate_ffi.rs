@@ -36,7 +36,7 @@ unsafe fn arg(ptr: *const c_char) -> String {
 }
 
 pub struct WowtypeTranslator {
-    translator: Translator,
+    pub(crate) translator: Translator,
     state: c_int,
     source: CString,
     text: CString,

@@ -136,7 +136,7 @@ public class Theme
       // added on the right and on the bottom of every keys.
       margin_top = config.marginTop + vertical_margin / 2;
       margin_left = horizontal_margin / 2;
-      keyboard_background_paint = init_keyboard_background_paint(theme, margin_top + row_height * layout.keysHeight + config.margin_bottom);
+      keyboard_background_paint = init_keyboard_background_paint(theme, margin_top + row_height * layout.keysHeight + config.margin_bottom, config.keyboardOpacity);
       key = new Key(theme, config, keyWidth, false, KeyboardData.Key.Role.Normal);
       key_action = new Key(theme, config, keyWidth, false, KeyboardData.Key.Role.Action);
       key_space_bar = new Key(theme, config, keyWidth, false, KeyboardData.Key.Role.Space_bar);
@@ -146,7 +146,7 @@ public class Theme
       indication_paint.setColor(theme.subLabelColor);
     }
 
-    static Paint init_keyboard_background_paint(Theme theme, float height)
+    static Paint init_keyboard_background_paint(Theme theme, float height, int opacity)
     {
       if (!theme.hasKeyboardGradient)
         return null;
@@ -160,12 +160,13 @@ public class Theme
               theme.keyboardGradientStart,
               theme.keyboardGradientEnd,
               Shader.TileMode.CLAMP));
+      p.setAlpha(opacity);
       return p;
     }
 
     public static final class Key
     {
-      public final Paint bg_paint = new Paint();
+      public final Paint bg_paint = new Paint(Paint.ANTI_ALIAS_FLAG);
       public final Paint border_left_paint;
       public final Paint border_top_paint;
       public final Paint border_right_paint;
@@ -186,7 +187,6 @@ public class Theme
         {
           border_width = theme.keyBorderWidthActivated;
           bg_paint.setColor(theme.colorKeyActivated);
-          bg_paint.setAlpha(config.keyActivatedOpacity);
         }
         else
         {
@@ -209,12 +209,13 @@ public class Theme
               border_width = config.borderConfig ? config.customBorderLineWidth : theme.keyBorderWidth;
               break;
           }
-          bg_paint.setAlpha(config.keyOpacity);
         }
-        border_left_paint = init_border_paint(config, border_width, theme.keyBorderColorLeft);
-        border_top_paint = init_border_paint(config, border_width, theme.keyBorderColorTop);
-        border_right_paint = init_border_paint(config, border_width, theme.keyBorderColorRight);
-        border_bottom_paint = init_border_paint(config, border_width, theme.keyBorderColorBottom);
+        int opacity = activated ? config.keyActivatedOpacity : config.keyOpacity;
+        bg_paint.setAlpha(bg_paint.getAlpha() * opacity / 255);
+        border_left_paint = init_border_paint(opacity, border_width, theme.keyBorderColorLeft);
+        border_top_paint = init_border_paint(opacity, border_width, theme.keyBorderColorTop);
+        border_right_paint = init_border_paint(opacity, border_width, theme.keyBorderColorRight);
+        border_bottom_paint = init_border_paint(opacity, border_width, theme.keyBorderColorBottom);
         _label_paint = init_label_paint(config, null);
         _special_label_paint = init_label_paint(config, _key_font);
         _sublabel_paint = init_label_paint(config, null);
@@ -240,13 +241,13 @@ public class Theme
       }
     }
 
-    static Paint init_border_paint(Config config, float border_width, int color)
+    static Paint init_border_paint(int opacity, float border_width, int color)
     {
-      Paint p = new Paint();
-      p.setAlpha(config.keyOpacity);
+      Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
       p.setStyle(Paint.Style.STROKE);
       p.setStrokeWidth(border_width);
       p.setColor(color);
+      p.setAlpha(Color.alpha(color) * opacity / 255);
       return p;
     }
 
