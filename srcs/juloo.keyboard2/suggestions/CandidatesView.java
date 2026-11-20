@@ -61,7 +61,7 @@ public class CandidatesView extends LinearLayout
   /** Toggle between the one-row strip and a grid of every candidate. The grid
       and the keyboard are siblings in [R.layout.keyboard], looked up lazily. */
   ImageView _expand_button;
-  /** Small permanent mark, shown only on Chinese layouts. */
+  /** Input mode mark for the on-screen keyboard. */
   TextView _mode_indicator;
   /** The latin letters being composed, a sibling of this view in the keyboard
       layout. */
@@ -72,7 +72,6 @@ public class CandidatesView extends LinearLayout
   boolean _expanded = false;
   boolean _compact;
   boolean _numbered;
-  static final int PHYSICAL_MODE_WIDTH_DP = 44;
 
   /** Label size of a candidate and of its annotation, or 0 before
       [set_sizes]. */
@@ -423,21 +422,14 @@ public class CandidatesView extends LinearLayout
     update_controls();
   }
 
-  public void refresh_config(Config config, String script, boolean compact, Runnable toggle_mode)
+  public void refresh_config(Config config, String script, boolean compact)
   {
     _script = script == null ? "" : script;
     _compact = compact;
     collapse();
     ensure_siblings();
     _keyboard_view.setVisibility(compact ? View.GONE : View.VISIBLE);
-    LinearLayout.LayoutParams mode_params = (LinearLayout.LayoutParams)_mode_indicator.getLayoutParams();
-    mode_params.width = compact ? dp(PHYSICAL_MODE_WIDTH_DP) : LayoutParams.WRAP_CONTENT;
-    mode_params.height = compact ? LayoutParams.MATCH_PARENT : LayoutParams.WRAP_CONTENT;
-    _mode_indicator.setLayoutParams(mode_params);
-    _mode_indicator.setGravity(compact ? Gravity.CENTER : Gravity.TOP | Gravity.START);
-    _mode_indicator.setAlpha(compact ? 1f : 0.55f);
-    _mode_indicator.setOnClickListener(compact ? view -> toggle_mode.run() : null);
-    _mode_indicator.setClickable(compact);
+    _mode_indicator.setVisibility(compact ? View.GONE : View.VISIBLE);
     setLayoutDirection(compact ? View.LAYOUT_DIRECTION_LTR : View.LAYOUT_DIRECTION_INHERIT);
     clear_candidates();
     set_sizes(config);
@@ -450,8 +442,7 @@ public class CandidatesView extends LinearLayout
 
   private int compact_width()
   {
-    return _width - getPaddingStart() - getPaddingEnd()
-      - dp(PHYSICAL_MODE_WIDTH_DP) - ((MarginLayoutParams)_mode_indicator.getLayoutParams()).getMarginStart();
+    return _width - getPaddingStart() - getPaddingEnd();
   }
 
   /** Set the height of the suggestion row and the text size. */
@@ -639,22 +630,15 @@ public class CandidatesView extends LinearLayout
     update_mode_indicator();
   }
 
-  /** A tiny mark pinned to the top-left corner: 中 on a Chinese layout, Eng
-      otherwise. Always present, so the mode stays readable even when there
-      are no candidates. English is drawn smaller because three letters take
-      more room than one glyph. */
+  /** On the on-screen keyboard, the top-left mark shows 中 or Eng even when
+      there are no candidates. Eng is smaller to fit all three letters. */
   void update_mode_indicator()
   {
-    if (_mode_indicator == null)
+    if (_mode_indicator == null || _compact)
       return;
     boolean chinese = is_chinese();
     _mode_indicator.setText(chinese ? "中" : "Eng");
-    if (_compact)
-    {
-      _mode_indicator.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-      _mode_indicator.setContentDescription(getContext().getString(R.string.physical_keyboard_mode_chinese));
-    }
-    else if (_text_size > 0)
+    if (_text_size > 0)
     {
       _mode_indicator.setContentDescription(chinese ? "中文输入" : "English input");
       set_text_size(_mode_indicator,

@@ -263,8 +263,7 @@ public class Keyboard2 extends InputMethodService
       : _config.editor_config.show_candidate_row(script,
           _config.suggestions_enabled, _config.split_layout);
     _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
-    _candidates_view.refresh_config(_config, script, compact,
-        compact ? this::toggle_physical_language : null);
+    _candidates_view.refresh_config(_config, script, compact);
     _keyboard_container_view.requestApplyInsets();
     if (should_show)
       _keyeventhandler.dictionary_changed();

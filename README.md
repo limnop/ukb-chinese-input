@@ -20,12 +20,12 @@
 
 连接 USB 或蓝牙键盘后，可在普通文本框中使用悬浮候选栏输入拼音。在 UKB 设置的「连接实体键盘时（含 scrcpy UHID）」中，默认选项为「实体键盘模式（悬浮拼音候选栏）」。候选栏悬浮在应用上方，应用输入框保持原位；当应用提供光标位置时，候选栏会避开底部的光标。原有的「隐藏所有」和「显示所有」可继续选择。
 
-中文模式空闲时，右下角只显示小「中」标志。有待确认的拼音时才展开候选栏。英文模式下两者都隐藏，单按 Shift 可切回中文。
+中文模式空闲时，右下角显示小「中」标志。有待确认的拼音时，标志让位给候选栏。英文模式下两者都隐藏，单按 Shift 可切回中文。
 
 | 按键 | 功能 |
 | --- | --- |
 | 单按左 Shift 或右 Shift | 切换拼音和英文 |
-| 点击「中」 | 从拼音切到英文 |
+| 空闲时点击右下角的「中」 | 从拼音切到英文 |
 | 空格、点击候选或按下候选前的数字 | 上屏当前页首选或对应候选 |
 | ↑ / ↓ 或 Page Up / Page Down | 候选翻页 |
 | ← / →、Backspace、Delete | 编辑输入中的拼音 |
@@ -89,7 +89,7 @@ The bar floats over the editor without resizing it. When the editor reports a ca
 | Key or action | Behavior |
 | --- | --- |
 | Tap either Shift key by itself | Switch between pinyin and English |
-| Tap `中` | Switch to English |
+| Tap the bottom-right `中` badge while idle | Switch to English |
 | Space, tap a candidate, or press its displayed number | Commit the first or selected candidate on the current page |
 | Up / Down or Page Up / Page Down | Page through candidates |
 | Left / Right, Backspace, Delete | Edit the composition |
