@@ -66,6 +66,7 @@ public final class KeyEventHandler
   /** Editing just started. */
   public void started(Config conf)
   {
+    _composer.reset();
     InputConnection ic = _recv.getCurrentInputConnection();
     _autocap.started(conf, ic);
     _typedword.started(conf, ic);
@@ -74,7 +75,6 @@ public final class KeyEventHandler
       conf.editor_config.should_move_cursor_force_fallback;
     _space_bar_auto_complete = conf.space_bar_auto_complete;
     _last_action = null;
-    _composer.reset();
   }
 
   /** Select the composer of the current layout. A composer that is already
@@ -111,6 +111,138 @@ public final class KeyEventHandler
   boolean has_composition()
   {
     return _composer.text().length() > 0;
+  }
+
+  boolean is_calculating()
+  {
+    return _composer instanceof Pinyin && ((Pinyin)_composer).is_v_mode();
+  }
+
+  void cancel_composition()
+  {
+    if (!has_composition())
+      return;
+    _composer.reset();
+    send_composition();
+  }
+
+  /** Handle keys owned by physical pinyin input. Unclaimed keys keep their
+      original events, including the device's shortcuts and modifier state. */
+  boolean physical_key_down(KeyEvent event)
+  {
+    if (!event.hasNoModifiers() && !event.hasModifiers(KeyEvent.META_SHIFT_ON))
+      return false;
+    boolean composing = has_composition();
+    boolean first_press = event.getRepeatCount() == 0;
+    if (composing && event.hasNoModifiers())
+    {
+      switch (event.getKeyCode())
+      {
+        case KeyEvent.KEYCODE_SPACE:
+          if (first_press && !accept_physical_candidate(0))
+            finish_composition();
+          return true;
+        case KeyEvent.KEYCODE_ENTER:
+        case KeyEvent.KEYCODE_NUMPAD_ENTER:
+          if (first_press)
+            finish_composition();
+          return true;
+        case KeyEvent.KEYCODE_ESCAPE:
+          if (first_press)
+            cancel_composition();
+          return true;
+        case KeyEvent.KEYCODE_DEL:
+          handle_backspace();
+          return true;
+        case KeyEvent.KEYCODE_FORWARD_DEL:
+          if (_composer.move_cursor(1))
+            handle_backspace();
+          return true;
+        case KeyEvent.KEYCODE_DPAD_LEFT:
+        case KeyEvent.KEYCODE_DPAD_RIGHT:
+          if (_composer.move_cursor(event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1))
+            send_composition();
+          return true;
+        case KeyEvent.KEYCODE_DPAD_UP:
+        case KeyEvent.KEYCODE_PAGE_UP:
+          _recv.page_candidates(-1);
+          return true;
+        case KeyEvent.KEYCODE_DPAD_DOWN:
+        case KeyEvent.KEYCODE_PAGE_DOWN:
+          _recv.page_candidates(1);
+          return true;
+        case KeyEvent.KEYCODE_TAB:
+        case KeyEvent.KEYCODE_MOVE_HOME:
+        case KeyEvent.KEYCODE_MOVE_END:
+          finish_composition();
+          return false;
+      }
+    }
+    int c = event.getUnicodeChar();
+    if (is_calculating())
+    {
+      if (c == '=')
+      {
+        if (first_press)
+          accept_physical_candidate(0);
+        return true;
+      }
+      if (c > 0 && "0123456789+-*/%^.()×÷".indexOf(c) >= 0)
+      {
+        send_text(String.valueOf((char)c));
+        return true;
+      }
+    }
+    if (composing && c >= '0' && c <= '9')
+    {
+      if (first_press)
+        accept_physical_candidate(candidate_index_of_digit((char)c));
+      return true;
+    }
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (composing && c == '\''))
+    {
+      send_text(String.valueOf((char)c));
+      return true;
+    }
+    String punctuation = physical_chinese_punctuation(c);
+    if (punctuation != null)
+    {
+      if (composing)
+        accept_physical_candidate(0);
+      send_text(punctuation);
+      return true;
+    }
+    if (composing && event.isPrintingKey())
+      finish_composition();
+    return false;
+  }
+
+  private boolean accept_physical_candidate(int digit)
+  {
+    Composer.Candidate candidate = _recv.candidate_at_digit(digit);
+    if (candidate == null)
+      return false;
+    suggestion_entered(candidate);
+    return true;
+  }
+
+  static String physical_chinese_punctuation(int c)
+  {
+    switch (c)
+    {
+      case ',': return "，";
+      case '.': return "。";
+      case '?': return "？";
+      case '!': return "！";
+      case ';': return "；";
+      case ':': return "：";
+      case '(': return "（";
+      case ')': return "）";
+      case '<': return "《";
+      case '>': return "》";
+      default: return null;
+    }
   }
 
   /** The letters of the live composition, shown above the candidates row on

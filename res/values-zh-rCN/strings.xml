@@ -161,7 +161,9 @@
     <string name="pref_number_entry_layout_number">数字区</string>
     <string name="pref_number_entry_layout_normal">使用主键盘布局</string>
     <string name="pref_number_entry_title">输入数字，日期和电话时的布局</string>
-    <string name="pref_physical_keyboard_behavior">物理键盘连接时</string>
+    <string name="pref_physical_keyboard_behavior">连接实体键盘时（含 scrcpy UHID）</string>
+    <string name="pref_physical_keyboard_behavior_compose">实体键盘模式（悬浮拼音候选栏）</string>
+    <string name="physical_keyboard_mode_chinese">中文输入。单按 Shift 或点按此处切换到英文。</string>
     <string name="pref_physical_keyboard_behavior_hide">隐藏所有</string>
     <string name="pref_physical_keyboard_behavior_show">显示所有</string>
     <string name="pref_split_layout_never">用不</string>

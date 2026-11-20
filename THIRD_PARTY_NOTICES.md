@@ -31,6 +31,18 @@ Attribution: WowType contributors; Tsinghua CoAI contributors (LCCC, MIT);
 Wikipedia contributors (Chinese Wikipedia, CC BY-SA 4.0).
 Its SHA-256 is `42cb7c4a7cededa29b1a9ff105530085529fefff96535cc051341ebd51605dbe`.
 
+## Bundled Shijing text
+
+The Shijing entries are generated from the 305 poems in
+[chinese-poetry's Shijing transcription](https://github.com/chinese-poetry/chinese-poetry/blob/b8594f81a89752241442f2ce267d6f66f96704ee/%E8%AF%97%E7%BB%8F/shijing.json)
+at commit `b8594f81a89752241442f2ce267d6f66f96704ee`.
+The ancient text is in the public domain. The source edition's MIT notice is
+included in the APK as `assets/wowtype-shijing-LICENSE.txt`.
+`scripts/make-shijing-phrases.py` generates the exact-match input codes with
+[pypinyin](https://github.com/mozillazg/python-pinyin) 0.55.0 and contextual reading
+overrides. The generated asset is checked in, so Android builds require no
+additional download or Python package.
+
 ## Historical dictionary sources
 
 `srcs/chinese/data/zh_pinyin.dat` is retained as historical build input but is

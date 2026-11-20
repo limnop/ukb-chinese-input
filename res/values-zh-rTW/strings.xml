@@ -43,6 +43,11 @@
     <string name="pref_space_bar_auto_complete_title">以空白鍵自動選字</string>
     <string name="pref_space_bar_auto_complete_summary">以空白鍵填入最好的建議字詞</string>
     <string name="pref_category_typing">輸入</string>
+    <string name="pref_physical_keyboard_behavior">連接實體鍵盤時（含 scrcpy UHID）</string>
+    <string name="pref_physical_keyboard_behavior_compose">實體鍵盤模式（浮動拼音候選列）</string>
+    <string name="pref_physical_keyboard_behavior_hide">隱藏全部</string>
+    <string name="pref_physical_keyboard_behavior_show">顯示全部</string>
+    <string name="physical_keyboard_mode_chinese">中文輸入。單按 Shift 或點按此處切換至英文。</string>
     <string name="pref_swipe_dist_title">滑動距離</string>
     <string name="pref_swipe_dist_summary">按鍵角落字元間距 (%s)</string>
     <string name="pref_long_timeout_title">長按時間長度</string>

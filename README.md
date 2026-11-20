@@ -6,13 +6,42 @@
 
 ### 本分支功能
 
-- 在「设置 → 样式 → 主题」按分类浏览配色。新增磷光终端、极简石墨和雾蓝亚克力：[键盘实拍对比](doc/keyboard-themes.png)。亚克力使用半透明色层，不会模糊其他应用的内容。
+- 在「设置 → 样式 → 主题」按分类浏览配色。新增磷光终端、极简石墨和雾蓝亚克力：[键盘实拍对比](doc/keyboard-themes.png)。亚克力主题使用半透明色层。
 - 拼音输入由 WowType v0.6.0 Rust 引擎配合完整雾凇词库、补充字表和词级语言模型，提供整句候选、纠错、模糊音和本地学习；注音输入保留原有实现。
+- 拼音预装《诗经》305 篇正文，按分句和带标点的整句收录，每条至少四个汉字。输入全拼即可选中原句，例如 `guanguanjujiuzaihezhizhou` →「关关雎鸠，在河之洲。」。常用软件名支持原名拼写或中文全拼，例如 `chatgpt` → ChatGPT，`claudecode` → Claude Code，`tongyiqianwen` → 通义千问。
 - 在拼音布局上，从 `x` 向左上滑输入 `「`，向右下滑输入 `」`；点按仍输入 `x`。
-- 在文本密码框中自动切换到英文布局，并在底栏提供快速收起按钮。
+- 拼音和注音布局在分体键盘上也保留候选栏。退格优先编辑当前拼音，拼音清空后可继续删除已上屏的文字。
+- 在文本密码框中自动切换到英文布局。软键盘底栏的快速收起按钮位于右侧。
 - 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
-- 剪贴板默认持久保存最近 70 条文本；键盘打开时自动轮询远端更新，也可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并提供预览和去重处理。密码框期间暂停自动轮询。
+- 剪贴板默认持久保存最近 70 条文本；软键盘打开时自动轮询远端更新。可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并预览结果。重复下载时会复用仍保存在下载目录中的同一文件。密码框和实体键盘模式下暂停自动轮询。
 - 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和随应用提供的服务器证书。
+
+### 实体键盘模式
+
+连接 USB 或蓝牙键盘后，可在普通文本框中使用悬浮候选栏输入拼音。在 UKB 设置的「连接实体键盘时（含 scrcpy UHID）」中，默认选项为「实体键盘模式（悬浮拼音候选栏）」。候选栏悬浮在应用上方，应用输入框保持原位；当应用提供光标位置时，候选栏会避开底部的光标。原有的「隐藏所有」和「显示所有」可继续选择。
+
+中文模式空闲时，右下角只显示小「中」标志。有待确认的拼音时才展开候选栏。英文模式下两者都隐藏，单按 Shift 可切回中文。
+
+| 按键 | 功能 |
+| --- | --- |
+| 单按左 Shift 或右 Shift | 切换拼音和英文 |
+| 点击「中」 | 从拼音切到英文 |
+| 空格、点击候选或按下候选前的数字 | 上屏当前页首选或对应候选 |
+| ↑ / ↓ 或 Page Up / Page Down | 候选翻页 |
+| ← / →、Backspace、Delete | 编辑输入中的拼音 |
+| Esc / Enter | 取消当前拼音 / 上屏原始拼音 |
+
+中文模式自动转换逗号、句号等常用标点，U 拆字和 V 计算也可直接从实体键盘输入。密码、数字等非普通文本字段直接接收按键。
+
+#### 通过 scrcpy 使用电脑键盘
+
+在 UKB 中选用「实体键盘模式（悬浮拼音候选栏）」，然后用 UHID 模式启动 scrcpy（USB 和无线连接均可）。
+
+```sh
+scrcpy --keyboard=uhid
+```
+
+首次连接时，在 Android 的「实体键盘」设置中为 scrcpy 键盘选择与电脑匹配的布局。打开手机上的文本框并在 scrcpy 窗口内打字，即可使用上面的悬浮候选栏和快捷键。UHID 会让 Android 将电脑键盘识别为实体设备。参见 [scrcpy 键盘文档](https://github.com/Genymobile/scrcpy/blob/master/doc/keyboard.md#uhid)。
 
 ### U / V 模式
 
@@ -27,7 +56,7 @@
 
 拼音已完全切换到 [WowType](https://github.com/Gloridust/WowType)，不再回退到旧 Java 拼音引擎。当前随包数据约含 93 万条词条/读音记录，每次最多返回 1000 个候选，支持扩展区汉字。拼音纠错默认开启，模糊音默认关闭，可在设置中调整。覆盖安装后会按内容哈希更新词库与模型，并保留本地学习历史。
 
-目前已通过 58 项 JVM 测试及模拟器上的候选、整句、纠错、部分选词、退格和数据更新检查。整体输入质量尚未完成与上游的系统对比；完整数据在 x86_64 模拟器中进程 PSS 约 458 MiB，内存、首次加载和分段组词学习仍需优化。具体结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。
+当前 Debug 和 Release 各通过 61 项 JVM 测试。模拟器检查覆盖候选、整句、纠错、部分选词、退格、数据更新，以及《诗经》和软件名的精确匹配。整体输入质量尚未完成与上游的系统对比；完整数据在 x86_64 模拟器中进程 PSS 约 458 MiB，内存、首次加载和分段组词学习仍需优化。具体结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。
 
 构建需要 Android SDK/NDK、Java、Python 3 和 Rust stable（rustup）。首次构建会下载固定版本的雾凇词库和语言模型，并校验模型 SHA-256；后续复用本地缓存。运行 `./gradlew assembleRelease` 构建发行版，签名配置及测试步骤见 [CONTRIBUTING.md](CONTRIBUTING.md#building-the-wowtype-pinyin-engine)。
 
@@ -41,12 +70,36 @@ This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboa
 
 ### Features in this fork
 
-- Browse themes by category under Settings → Style → Theme. [Compare the three keyboard themes](doc/keyboard-themes.png): Phosphor Terminal, Graphite Minimal, and Frosted Acrylic. Acrylic uses translucent layers rather than blurring the app behind the keyboard.
-- WowType Rust pinyin decoding with the full rime-ice lexicon, supplementary characters and word language model, offering sentence candidates, typo correction, fuzzy pinyin, and local learning. Zhuyin retains its existing implementation.
-- Password text fields switch to an English layout automatically, and the bottom row has a quick-hide button.
+- Browse themes by category under Settings → Style → Theme. The three added themes are Phosphor Terminal, Graphite Minimal, and Frosted Acrylic. The acrylic theme uses translucent layers. [See the theme screenshots](doc/keyboard-themes.png).
+- WowType v0.6.0 Rust pinyin decoding with the full rime-ice lexicon, supplementary characters and word language model, offering sentence candidates, typo correction, fuzzy pinyin, and local learning. Zhuyin retains its existing implementation.
+- Pinyin includes the complete text of the 305 Shijing poems in entries of at least four Han characters. Type the full pinyin to select a clause or punctuated sentence. Bundled software names also match their full spelling or Chinese pinyin, such as `chatgpt` for ChatGPT and `claudecode` for Claude Code.
+- On the pinyin layout, swipe up-left from `x` for `「` and down-right for `」`. Tap the key for `x`.
+- Split layouts keep the candidate bar for pinyin and Zhuyin. Backspace edits the pinyin composition before deleting committed text.
+- Password text fields switch to an English layout automatically. The quick-hide button is on the right of the on-screen keyboard’s bottom row.
 - A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.
-- Clipboard history persistently keeps the latest 70 text entries by default. While the keyboard is open, it polls the configured SyncClipboard server for remote updates; users can also manually upload and download text, images, and files, with previews and duplicate-transfer handling. Polling pauses in password fields.
+- Clipboard history persistently keeps the latest 70 text entries by default. The on-screen keyboard polls the configured SyncClipboard server for remote updates while open. You can manually upload and download text, images, and files and preview the results. Repeated downloads reuse the same file while it remains in the downloads folder. Polling pauses in password fields and physical keyboard mode.
 - Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. The connection uses HTTPS and a certificate bundled for the configured server.
+
+### Physical keyboard mode
+
+USB and Bluetooth keyboards can compose pinyin in text fields using a floating candidate bar. In UKB settings, **Typing → Physical keyboard behavior (including scrcpy UHID)** defaults to **Physical keyboard mode (floating pinyin candidates)**. **Hide everything** and **Show everything** are also available.
+
+The bar floats over the editor without resizing it. When the editor reports a caret position, the bar moves above a caret it would otherwise cover. In Chinese mode, the bottom-right `中` badge appears while idle and expands to a candidate bar while composing. English mode hides the badge and bar.
+
+| Key or action | Behavior |
+| --- | --- |
+| Tap either Shift key by itself | Switch between pinyin and English |
+| Tap `中` | Switch to English |
+| Space, tap a candidate, or press its displayed number | Commit the first or selected candidate on the current page |
+| Up / Down or Page Up / Page Down | Page through candidates |
+| Left / Right, Backspace, Delete | Edit the composition |
+| Esc / Enter | Cancel the composition / commit the raw pinyin |
+
+Chinese mode converts common punctuation and supports U component lookup and V calculations. Password and numeric fields receive keys directly.
+
+#### Using scrcpy
+
+Start scrcpy with `scrcpy --keyboard=uhid` over USB or wirelessly. On first connection, choose a layout for the scrcpy keyboard in Android’s physical keyboard settings that matches your computer’s layout. Focus a text field and type in the scrcpy window. UHID presents the computer keyboard to Android as a physical device. [scrcpy keyboard guide](https://github.com/Genymobile/scrcpy/blob/master/doc/keyboard.md#uhid).
 
 ### U / V modes
 
@@ -66,7 +119,7 @@ Neither mode trains the pinyin dictionary. The `v` in ordinary pinyin such as
 
 Pinyin now uses [WowType](https://github.com/Gloridust/WowType) exclusively, with no fallback to the former Java decoder. Bundled data contains approximately 930,000 word/reading entries, with up to 1,000 candidates per query and support for supplementary Han characters. Typo correction defaults to on and fuzzy pinyin to off; both are configurable. App updates replace changed dictionary/model assets using content hashes while preserving local learning history.
 
-Validation includes 58 JVM tests and emulator checks for candidates, sentences, typo correction, partial selection, backspace and data upgrades. Overall input quality has not yet been systematically compared with upstream. Process PSS with the full data was about 458 MiB on the x86_64 emulator; memory use, initial loading and learning phrases across partial selections still need work. See the [porting and validation report](doc/WOWTYPE_PORTING_REPORT.md) for details (Chinese).
+The Debug and Release variants each pass 61 JVM tests. Emulator checks cover candidates, sentences, typo correction, partial selection, backspace, data upgrades, and exact matches for Shijing text and software names. Overall input quality has not yet been systematically compared with upstream. Process PSS with the full data was about 458 MiB on the x86_64 emulator; memory use, initial loading and learning phrases across partial selections still need work. See the [porting and validation report](doc/WOWTYPE_PORTING_REPORT.md) for details (Chinese).
 
 Builds require the Android SDK/NDK, Java, Python 3 and stable Rust via rustup. The first build downloads pinned dictionary/model inputs and verifies the model SHA-256; later builds reuse the local cache. Run `./gradlew assembleRelease` for a release build. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-wowtype-pinyin-engine) for signing and test instructions.
 

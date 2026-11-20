@@ -197,7 +197,9 @@
     <string name="candidates_status_click_to_install">Click to install a dictionary for %s</string>
     <string name="candidates_rubytext_toggle">Show the reading of the candidates</string>
     <string name="dictionary_switcher_title">Change language</string>
-    <string name="pref_physical_keyboard_behavior">When a physical keyboard is connected</string>
+    <string name="pref_physical_keyboard_behavior">Physical keyboard behavior (including scrcpy UHID)</string>
+    <string name="pref_physical_keyboard_behavior_compose">Physical keyboard mode (floating pinyin candidates)</string>
+    <string name="physical_keyboard_mode_chinese">Chinese input. Tap Shift by itself or tap here to switch to English.</string>
     <string name="pref_physical_keyboard_behavior_hide">Hide everything</string>
     <string name="pref_physical_keyboard_behavior_show">Show everything</string>
     <string name="pref_split_layout">Split layout</string>

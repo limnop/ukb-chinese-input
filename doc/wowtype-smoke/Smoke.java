@@ -78,6 +78,31 @@ public class Smoke extends Instrumentation {
    if(!specialHistory.equals(readFile(history)))throw new AssertionError("Special mode polluted pinyin history");
    p=new Pinyin();p.type("v1/0");
    if(!p.candidates().get(0).text.equals("1/0"))throw new AssertionError("Invalid arithmetic should remain literal");
+   String[][] bundled = {
+       {"guanguanjujiu", "关关雎鸠"},
+       {"guan'guan'ju'jiu'zai'he'zhi'zhou", "关关雎鸠，在河之洲。"},
+       {"qiangzhongzixi", "将仲子兮"},
+       {"zhibijingshan", "陟彼景山"},
+       {"chatgpt", "ChatGPT"},
+       {"claudecode", "Claude Code"},
+       {"tongyiqianwen", "通义千问"},
+       {"vscode", "VS Code"},
+       {"udio", "Udio"},
+   };
+   String bundledHistory = readFile(history);
+   for (String[] sample : bundled) {
+    p = new Pinyin();
+    if (!p.type(sample[0])) throw new AssertionError("Bundled input rejected: " + sample[0]);
+    List<Composer.Candidate> cs = p.candidates();
+    if (cs.isEmpty() || !cs.get(0).text.equals(sample[1]))
+     throw new AssertionError("Bundled candidate mismatch: " + sample[0]);
+    long matches = cs.stream().filter(c -> c.text.equals(sample[1])).count();
+    if (matches != 1 || !p.accept(cs.get(0)).isEmpty())
+     throw new AssertionError("Bundled candidate deduplication or commit failed: " + sample[0]);
+    log.append(sample[0] + " -> " + sample[1] + "\n");
+   }
+   if (!bundledHistory.equals(readFile(history)))
+    throw new AssertionError("Bundled shortcuts polluted pinyin history");
    result.putString("stream",log+"PASS\n");finish(-1,result);
   } catch(Throwable e){result.putString("stream",log+"FAIL "+e);finish(0,result);}
  }

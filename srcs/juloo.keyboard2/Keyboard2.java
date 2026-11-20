@@ -13,6 +13,7 @@ import android.text.InputType;
 import android.util.Log;
 import android.util.LogPrinter;
 import android.view.*;
+import android.view.inputmethod.CursorAnchorInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -32,6 +33,7 @@ import juloo.keyboard2.dict.DictionariesActivity;
 import juloo.keyboard2.dict.DictionarySwitcher;
 import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
+import juloo.keyboard2.suggestions.FloatingCandidates;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.staged.Composer;
 
@@ -43,6 +45,7 @@ public class Keyboard2 extends InputMethodService
   private ViewGroup _keyboard_container_view;
   private Keyboard2View _keyboard_layout_view;
   private CandidatesView _candidates_view;
+  private FloatingCandidates _floating_candidates;
   private Suggestions _suggestions;
   private KeyEventHandler _keyeventhandler;
   /** If not 'null', the layout to use instead of [_config.current_layout]. */
@@ -57,6 +60,11 @@ public class Keyboard2 extends InputMethodService
   private Runnable _clipboardPollTask;
   private boolean _clipboardPollInFlight = false;
   private int _clipboardPollGeneration = 0;
+  private boolean _physical_chinese = true;
+  /** Shift pressed by itself, pending release to switch languages. */
+  private Long _physical_shift_down;
+  /** Key-up and repeat events belong to whoever handled the initial down. */
+  private final Set<Long> _physical_keys_down = new HashSet<>();
 
   private Config _config;
 
@@ -111,8 +119,16 @@ public class Keyboard2 extends InputMethodService
   {
     KeyboardData layout = current_layout();
     _keyboard_layout_view.setKeyboard(layout);
-    _keyeventhandler.set_layout_script(layout.script);
-    refresh_candidates_view(layout.script);
+    String script = input_script(layout.script);
+    _keyeventhandler.set_layout_script(script);
+    refresh_candidates_view(script);
+  }
+
+  private String input_script(String layout_script)
+  {
+    if (!physical_input_active())
+      return layout_script;
+    return _physical_chinese ? "pinyin" : null;
   }
 
   KeyboardData loadLayout(int layout_id)
@@ -161,7 +177,8 @@ public class Keyboard2 extends InputMethodService
     refreshSubtypeImm();
     create_keyboard_view();
     WowtypePinyinEngine.preload(this, () -> {
-      if (isInputViewShown() && _keyeventhandler.has_composition())
+      if ((isInputViewShown() || physical_input_active())
+          && _keyeventhandler.has_composition())
         _keyeventhandler.dictionary_changed();
     });
     ClipboardHistoryService.on_startup(this, _keyeventhandler);
@@ -236,17 +253,22 @@ public class Keyboard2 extends InputMethodService
   {
     _dictionaries.set_selected(_config, dict_name);
     refresh_current_dictionary();
-    refresh_candidates_view(current_layout_unmodified().script);
+    refresh_candidates_view(input_script(current_layout_unmodified().script));
   }
 
   private void refresh_candidates_view(String script)
   {
-    boolean should_show = _config.editor_config.show_candidate_row(script,
-        _config.suggestions_enabled, _config.split_layout);
+    boolean compact = physical_mode_selected();
+    boolean should_show = compact ? physical_input_active()
+      : _config.editor_config.show_candidate_row(script,
+          _config.suggestions_enabled, _config.split_layout);
     _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
-    _candidates_view.refresh_config(_config, script);
+    _candidates_view.refresh_config(_config, script, compact,
+        compact ? this::toggle_physical_language : null);
+    _keyboard_container_view.requestApplyInsets();
     if (should_show)
       _keyeventhandler.dictionary_changed();
+    update_floating_candidates();
   }
 
   /** Might re-create the keyboard view. [_keyboard_layout_view.setKeyboard()] and
@@ -265,9 +287,14 @@ public class Keyboard2 extends InputMethodService
       setInputView(_keyboard_container_view);
     }
     // Set keyboard background opacity
-    Drawable bg = _keyboard_container_view.getBackground().mutate();
-    bg.setAlpha(_config.keyboardOpacity);
-    _keyboard_container_view.setBackground(bg);
+    if (_floating_candidates != null)
+      _floating_candidates.set_opacity(_config.keyboardOpacity);
+    else
+    {
+      Drawable bg = _keyboard_container_view.getBackground().mutate();
+      bg.setAlpha(_config.keyboardOpacity);
+      _keyboard_container_view.setBackground(bg);
+    }
     _keyboard_layout_view.reset();
   }
 
@@ -288,17 +315,56 @@ public class Keyboard2 extends InputMethodService
   }
 
   @Override
-  public void onStartInputView(EditorInfo info, boolean restarting)
+  public void onStartInput(EditorInfo info, boolean restarting)
   {
+    super.onStartInput(info, restarting);
+    _physical_shift_down = null;
     _config.editor_config.refresh(info, getResources());
+    if (physical_mode_selected())
+    {
+      // The first physical keystroke can arrive before any IME view is shown.
+      prepare_input();
+      if (!physical_candidates_enabled() && isInputViewShown())
+        requestHideSelf(0);
+      else if (!restarting && physical_candidates_enabled() && !isInputViewShown())
+        _handler.post(() -> {
+          if (getCurrentInputEditorInfo() == info && physical_candidates_enabled() && !isInputViewShown())
+            requestShowSelf(0);
+        });
+    }
+  }
+
+  private void prepare_input()
+  {
     refresh_config();
     _currentSpecialLayout = _config.editor_config.password_editor
       ? loadLayout(R.xml.latn_qwerty_us) : refresh_special_layout();
     _keyeventhandler.started(_config);
     apply_current_layout();
+  }
+
+  @Override
+  public void onStartInputView(EditorInfo info, boolean restarting)
+  {
+    if (!physical_mode_selected())
+      prepare_input();
     setInputView(_keyboard_container_view);
+    if (_floating_candidates != null)
+      track_floating_caret(true);
     Logs.debug_startup_input_view(info, _config);
-    startClipboardPolling();
+    if (!physical_mode_selected())
+      startClipboardPolling();
+  }
+
+  @Override
+  public void onFinishInput()
+  {
+    _physical_shift_down = null;
+    if (physical_input_active())
+      _keyeventhandler.cancel_composition();
+    if (_floating_candidates != null)
+      _floating_candidates.set_state(false, false);
+    super.onFinishInput();
   }
 
   private void startClipboardPolling()
@@ -367,12 +433,64 @@ public class Keyboard2 extends InputMethodService
   @Override
   public void setInputView(View v)
   {
+    if (_floating_candidates != null)
+    {
+      _floating_candidates.detach_card();
+      _floating_candidates = null;
+    }
     ViewParent parent = v.getParent();
     if (parent != null && parent instanceof ViewGroup)
       ((ViewGroup)parent).removeView(v);
+    if (v == _keyboard_container_view && physical_input_active())
+    {
+      _floating_candidates = new FloatingCandidates(v, this::toggle_physical_language);
+      update_floating_candidates();
+      v = _floating_candidates;
+    }
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
     v.requestApplyInsets();
+  }
+
+  private void update_floating_candidates()
+  {
+    if (_floating_candidates != null)
+      _floating_candidates.set_state(physical_candidates_enabled(), _keyeventhandler.has_composition());
+  }
+
+  @Override
+  public void onComputeInsets(Insets outInsets)
+  {
+    if (_floating_candidates == null || !isInputViewShown())
+    {
+      super.onComputeInsets(outInsets);
+      return;
+    }
+    // Reserve zero space in the app and let touches outside the card through.
+    int bottom = getWindow().getWindow().getDecorView().getHeight();
+    outInsets.contentTopInsets = bottom;
+    outInsets.visibleTopInsets = bottom;
+    outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION;
+    _floating_candidates.set_touchable_region(outInsets.touchableRegion);
+  }
+
+  private void track_floating_caret(boolean enabled)
+  {
+    InputConnection connection = getCurrentInputConnection();
+    if (connection == null)
+      return;
+    int mode = enabled
+      ? InputConnection.CURSOR_UPDATE_IMMEDIATE | InputConnection.CURSOR_UPDATE_MONITOR : 0;
+    if (!enabled || VERSION.SDK_INT < 33 || !connection.requestCursorUpdates(
+          mode, InputConnection.CURSOR_UPDATE_FILTER_INSERTION_MARKER))
+      connection.requestCursorUpdates(mode);
+  }
+
+  @Override
+  public void onUpdateCursorAnchorInfo(CursorAnchorInfo info)
+  {
+    if (_floating_candidates != null && isInputViewShown())
+      _floating_candidates.set_cursor_anchor(info);
   }
 
   @Override
@@ -460,6 +578,10 @@ public class Keyboard2 extends InputMethodService
   public void onFinishInputView(boolean finishingInput)
   {
     stopClipboardPolling();
+    if (_floating_candidates != null)
+      track_floating_caret(false);
+    if (physical_input_active())
+      _keyeventhandler.cancel_composition();
     super.onFinishInputView(finishingInput);
     _keyboard_layout_view.reset();
   }
@@ -474,6 +596,18 @@ public class Keyboard2 extends InputMethodService
       return;
     refresh_config();
     apply_current_layout();
+    if ("physical_keyboard_behavior".equals(_key))
+    {
+      if (isInputViewShown())
+      {
+        if (_floating_candidates != null)
+          track_floating_caret(false);
+        setInputView(_keyboard_container_view);
+        if (_floating_candidates != null)
+          track_floating_caret(true);
+      }
+      updateInputViewShown();
+    }
   }
 
   @Override
@@ -486,17 +620,119 @@ public class Keyboard2 extends InputMethodService
   @Override
   public boolean onEvaluateInputViewShown()
   {
+    if (physical_mode_selected())
+      return physical_candidates_enabled();
     // Since Android 16, this method returns [false] for unknown reasons.
     if (super.onEvaluateInputViewShown())
       return true;
     if (getResources().getConfiguration().hardKeyboardHidden
         == Configuration.HARDKEYBOARDHIDDEN_NO
-        && _config.physical_keyboard_hide)
+        && (_config == null || "hide".equals(_config.physical_keyboard_behavior)))
     {
       Logs.debug("Physical keyboard is present");
       return false;
     }
     return true;
+  }
+
+  @Override
+  public boolean onShowInputRequested(int flags, boolean configChange)
+  {
+    if (physical_mode_selected())
+      return physical_candidates_enabled();
+    return super.onShowInputRequested(flags, configChange);
+  }
+
+  private boolean physical_mode_selected()
+  {
+    Configuration config = getResources().getConfiguration();
+    return _config != null && "compose".equals(_config.physical_keyboard_behavior)
+      && config.keyboard == Configuration.KEYBOARD_QWERTY
+      && config.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
+  }
+
+  private boolean physical_input_active()
+  {
+    EditorInfo editor = getCurrentInputEditorInfo();
+    return physical_mode_selected() && getCurrentInputStarted() && editor != null
+      && (editor.inputType & InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT
+      && !_config.editor_config.password_editor;
+  }
+
+  private boolean physical_candidates_enabled()
+  {
+    return _physical_chinese && physical_input_active();
+  }
+
+  private void toggle_physical_language()
+  {
+    if (!physical_input_active())
+      return;
+    _physical_chinese = !_physical_chinese;
+    apply_current_layout();
+    if (_physical_chinese)
+      requestShowSelf(0);
+    else
+      requestHideSelf(0);
+  }
+
+  private static long physical_key_id(KeyEvent event)
+  {
+    return ((long)event.getDeviceId() << 32) | (event.getKeyCode() & 0xffffffffL);
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event)
+  {
+    long id = physical_key_id(event);
+    if (event.getRepeatCount() > 0)
+    {
+      if (_physical_shift_down != null && _physical_shift_down != id)
+        _physical_shift_down = null;
+      if (_physical_keys_down.contains(id))
+      {
+        if (physical_input_active() && _physical_chinese)
+          _keyeventhandler.physical_key_down(event);
+        return true;
+      }
+      return super.onKeyDown(keyCode, event);
+    }
+    _physical_shift_down = null;
+    _physical_keys_down.remove(id);
+    InputDevice device = event.getDevice();
+    if (physical_input_active() && device != null && !device.isVirtual()
+        && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+        && event.isFromSource(InputDevice.SOURCE_KEYBOARD))
+    {
+      if (keyCode == KeyEvent.KEYCODE_SHIFT_LEFT || keyCode == KeyEvent.KEYCODE_SHIFT_RIGHT)
+      {
+        int modifier = keyCode == KeyEvent.KEYCODE_SHIFT_LEFT
+          ? KeyEvent.META_SHIFT_LEFT_ON : KeyEvent.META_SHIFT_RIGHT_ON;
+        if (event.hasNoModifiers() || event.hasModifiers(modifier))
+          _physical_shift_down = id;
+        // Let the editor receive both modifier events so Shift chords still work.
+        return super.onKeyDown(keyCode, event);
+      }
+      if (!_physical_chinese || !_keyeventhandler.physical_key_down(event))
+        return super.onKeyDown(keyCode, event);
+      if (_keyeventhandler.has_composition() && !isInputViewShown())
+        requestShowSelf(0);
+      _physical_keys_down.add(id);
+      return true;
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
+  @Override
+  public boolean onKeyUp(int keyCode, KeyEvent event)
+  {
+    long id = physical_key_id(event);
+    boolean switch_language = _physical_shift_down != null
+      && _physical_shift_down == id && !event.isCanceled();
+    _physical_shift_down = null;
+    if (switch_language)
+      toggle_physical_language();
+    return _physical_keys_down.remove(id) || super.onKeyUp(keyCode, event);
   }
 
   public void launch_dictionaries_activity()
@@ -663,7 +899,8 @@ public class Keyboard2 extends InputMethodService
     {
       suggestions.composing = _keyeventhandler.composing_text();
       suggestions.composing_cursor = _keyeventhandler.composing_cursor();
-      _candidates_view.set_candidates(suggestions);
+      _candidates_view.set_candidates(suggestions, !_keyeventhandler.is_calculating());
+      update_floating_candidates();
     }
 
     public String provide_stateful_key_symbol(KeyValue.Stateful q)

@@ -74,12 +74,17 @@ public final class WowtypePinyinEngine
                   .get_shared_preferences(app);
               _components = new ComponentLookup(new java.io.InputStreamReader(
                   app.getAssets().open("wowtype_components.tsv"), "UTF-8"));
+              BundledPinyinLookup bundled = new BundledPinyinLookup();
+              bundled.load(new java.io.InputStreamReader(
+                  app.getAssets().open("wowtype_shijing.tsv"), "UTF-8"));
+              bundled.load(new java.io.InputStreamReader(
+                  app.getAssets().open("wowtype_software.tsv"), "UTF-8"));
               long handle = nativeNew(lexicon.getAbsolutePath(), model.getAbsolutePath(),
                   _history_path, _user_dict_path);
               if (handle != 0)
               {
                 _engine = handle;
-                Pinyin.engine = new NativeEngine();
+                Pinyin.engine = new NativeEngine(bundled);
               }
               else
                 android.util.Log.e("WowType", "Engine initialization failed");
@@ -223,16 +228,40 @@ public final class WowtypePinyinEngine
 
   private static final class NativeEngine implements Pinyin.Engine
   {
+    private static final int MAX_CANDIDATES = 1000;
+    private final BundledPinyinLookup _bundled;
+
+    NativeEngine(BundledPinyinLookup bundled)
+    {
+      _bundled = bundled;
+    }
+
     @Override public List<Composer.Candidate> candidates(String input, String context)
     {
+      List<Composer.Candidate> matches = _bundled.candidates(input);
+      // Exact software names such as vscode may start with a U/V mode prefix.
+      if (!matches.isEmpty() && (input.startsWith("u") || input.startsWith("v")))
+        return matches;
       if (input.startsWith("u")) return _components.candidates(input.substring(1));
-      return WowtypePinyinEngine.candidates(input, context, 1000);
+      List<Composer.Candidate> decoded = WowtypePinyinEngine.candidates(
+          input, context, MAX_CANDIDATES);
+      if (matches.isEmpty())
+        return decoded;
+      List<Composer.Candidate> results = new ArrayList<>(matches);
+      for (Composer.Candidate candidate : decoded)
+      {
+        if (results.size() >= MAX_CANDIDATES)
+          break;
+        if (!BundledPinyinLookup.contains(matches, candidate.text))
+          results.add(candidate);
+      }
+      return results;
     }
 
     @Override public void record_selection(String input, String word, String context)
     {
       long engine = _engine;
-      if (engine != 0)
+      if (engine != 0 && !BundledPinyinLookup.contains(_bundled.candidates(input), word))
         synchronized (WowtypePinyinEngine.class)
         {
           set_context(context);

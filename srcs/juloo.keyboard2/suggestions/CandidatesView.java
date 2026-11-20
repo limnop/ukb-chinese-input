@@ -6,6 +6,7 @@ import android.os.Build.VERSION;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.TextUtils;
 import android.text.TextPaint;
 import android.text.style.CharacterStyle;
 import android.text.style.RelativeSizeSpan;
@@ -69,6 +70,9 @@ public class CandidatesView extends LinearLayout
   View _keyboard_view;
   GridAdapter _grid_adapter;
   boolean _expanded = false;
+  boolean _compact;
+  boolean _numbered;
+  static final int PHYSICAL_MODE_WIDTH_DP = 44;
 
   /** Label size of a candidate and of its annotation, or 0 before
       [set_sizes]. */
@@ -109,7 +113,13 @@ public class CandidatesView extends LinearLayout
     if (w != oldw)
     {
       _width = w;
-      layout_cells();
+      if (_compact)
+      {
+        _page_start = 0;
+        rebuild_page();
+      }
+      else
+        layout_cells();
     }
   }
 
@@ -129,6 +139,8 @@ public class CandidatesView extends LinearLayout
        candidate: a list longer than the row would otherwise take the minimum
        width for every cell and leave the row short of its end. */
     int slot = Math.max(min, avail / Math.min(n, Math.max(1, avail / min)));
+    if (_compact)
+      slot = Math.max(0, compact_width() / n);
     /* Only build the cells that can be seen; [on_scroll] adds the rest when
        the row nears its end. Prefix candidates can number in the hundreds and
        inflating all of them on every keystroke made typing stall. */
@@ -144,7 +156,7 @@ public class CandidatesView extends LinearLayout
          row scroll instead. */
       int w = width;
       TextView text = (TextView)cell.findViewById(R.id.candidate_text);
-      if (_candidate_size > 0 && text != null)
+      if (!_compact && _candidate_size > 0 && text != null)
         w = Math.max(w, (int)(text.getText().length() * _candidate_size * 1.1f)
             + 2 * gap);
       ViewGroup.LayoutParams lp = cell.getLayoutParams();
@@ -156,17 +168,21 @@ public class CandidatesView extends LinearLayout
     }
   }
 
-  public void set_candidates(Suggestions s)
+  public void set_candidates(Suggestions s, boolean numbered)
   {
     List<Composer.Candidate> cs = new ArrayList<Composer.Candidate>();
-    cs.addAll(s.candidates);
-    if (s.emoji_suggestion != null)
-      cs.add(new Composer.Candidate(s.emoji_suggestion));
+    if (!_compact || is_chinese())
+    {
+      cs.addAll(s.candidates);
+      if (s.emoji_suggestion != null)
+        cs.add(new Composer.Candidate(s.emoji_suggestion));
+    }
+    _numbered = _compact && numbered && !s.composing.isEmpty();
     _candidates = cs;
     _page_start = 0;
     _row.removeAllViews();
     _shown = 0;
-    add_cells(CELLS_PER_PAGE);
+    add_cells(_compact ? page_size() : CELLS_PER_PAGE);
     layout_cells();
     _scroll.scrollTo(0, 0);
     if (_expanded)
@@ -297,7 +313,18 @@ public class CandidatesView extends LinearLayout
       final Composer.Candidate candidate = _candidates.get(_page_start + _shown);
       View cell = inflater.inflate(R.layout.candidates_item, _row, false);
       TextView text = (TextView)cell.findViewById(R.id.candidate_text);
-      text.setText(candidate.text);
+      if (_numbered)
+      {
+        String prefix = (_shown + 1) + " ";
+        SpannableString label = new SpannableString(prefix + candidate.text);
+        label.setSpan(new RelativeSizeSpan(0.65f), 0, prefix.length(),
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        text.setText(label);
+      }
+      else
+        text.setText(candidate.text);
+      if (_compact)
+        text.setEllipsize(TextUtils.TruncateAt.END);
       /* Annotations are never drawn, so their content is not built at all:
          no SpannableString, no per-cell layout parameters. */
       cell.findViewById(R.id.candidate_annotation).setVisibility(View.GONE);
@@ -334,6 +361,8 @@ public class CandidatesView extends LinearLayout
       so paging always advances by the same number of words. */
   int per_page()
   {
+    if (_compact)
+      return Math.max(1, Math.min(9, compact_width() / dp(64)));
     int min = getResources().getDimensionPixelSize(R.dimen.candidates_min_width);
     return Math.max(CELLS_PER_PAGE, _width / Math.max(1, min));
   }
@@ -350,7 +379,8 @@ public class CandidatesView extends LinearLayout
   public Composer.Candidate candidate_at_digit(int digit)
   {
     int i = _page_start + digit;
-    return (i >= 0 && i < _candidates.size()) ? _candidates.get(i) : null;
+    return (digit >= 0 && (!_compact || digit < page_size())
+        && i >= 0 && i < _candidates.size()) ? _candidates.get(i) : null;
   }
 
   /** Rebuild the row for the current page, back at the left edge. Only the
@@ -393,12 +423,35 @@ public class CandidatesView extends LinearLayout
     update_controls();
   }
 
-  public void refresh_config(Config config, String script)
+  public void refresh_config(Config config, String script, boolean compact, Runnable toggle_mode)
   {
     _script = script == null ? "" : script;
+    _compact = compact;
     collapse();
+    ensure_siblings();
+    _keyboard_view.setVisibility(compact ? View.GONE : View.VISIBLE);
+    LinearLayout.LayoutParams mode_params = (LinearLayout.LayoutParams)_mode_indicator.getLayoutParams();
+    mode_params.width = compact ? dp(PHYSICAL_MODE_WIDTH_DP) : LayoutParams.WRAP_CONTENT;
+    mode_params.height = compact ? LayoutParams.MATCH_PARENT : LayoutParams.WRAP_CONTENT;
+    _mode_indicator.setLayoutParams(mode_params);
+    _mode_indicator.setGravity(compact ? Gravity.CENTER : Gravity.TOP | Gravity.START);
+    _mode_indicator.setAlpha(compact ? 1f : 0.55f);
+    _mode_indicator.setOnClickListener(compact ? view -> toggle_mode.run() : null);
+    _mode_indicator.setClickable(compact);
+    setLayoutDirection(compact ? View.LAYOUT_DIRECTION_LTR : View.LAYOUT_DIRECTION_INHERIT);
     clear_candidates();
     set_sizes(config);
+  }
+
+  private int dp(int value)
+  {
+    return Math.round(value * getResources().getDisplayMetrics().density);
+  }
+
+  private int compact_width()
+  {
+    return _width - getPaddingStart() - getPaddingEnd()
+      - dp(PHYSICAL_MODE_WIDTH_DP) - ((MarginLayoutParams)_mode_indicator.getLayoutParams()).getMarginStart();
   }
 
   /** Set the height of the suggestion row and the text size. */
@@ -411,14 +464,15 @@ public class CandidatesView extends LinearLayout
     /* Shorter than a keyboard row. The label sizes below are still derived
        from the full row height: shrinking the bar must not shrink the
        candidates with it. */
-    p.height = (int)(row_height * 0.72f);
+    p.height = _compact ? dp(40) : (int)(row_height * 0.72f);
     setLayoutParams(p);
     // Match the size of labels on the keyboard.
     _text_size = row_height * config.characterSize * config.labelTextSize;
     _annotation_size = _text_size * 0.4f;
     /* Candidates are what the user reads: larger than the key labels, and
        fixed. Auto-sizing used to shrink a long word until it was unreadable. */
-    _candidate_size = _text_size * 1.15f;
+    _candidate_size = _compact ? TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
+        17, getResources().getDisplayMetrics()) : _text_size * 1.15f;
     update_mode_indicator();
     for (int i = 0; i < _row.getChildCount(); i++)
     {
@@ -473,6 +527,8 @@ public class CandidatesView extends LinearLayout
       its size and the app below is not resized. Tapping again restores it. */
   void toggle_expanded()
   {
+    if (_compact)
+      return;
     ensure_siblings();
     if (_grid == null || _keyboard_view == null)
       return;
@@ -525,7 +581,7 @@ public class CandidatesView extends LinearLayout
     ensure_siblings();
     if (_composing_view == null)
       return;
-    boolean show = is_chinese();
+    boolean show = is_chinese() && (!_compact || !text.isEmpty());
     if (show && text.length() > 0)
     {
       int c = Math.max(0, Math.min(cursor, text.length()));
@@ -579,7 +635,7 @@ public class CandidatesView extends LinearLayout
     if (!has_candidates && _expanded)
       collapse();
     if (_expand_button != null)
-      _expand_button.setVisibility(has_candidates ? View.VISIBLE : View.GONE);
+      _expand_button.setVisibility(has_candidates && !_compact ? View.VISIBLE : View.GONE);
     update_mode_indicator();
   }
 
@@ -593,11 +649,17 @@ public class CandidatesView extends LinearLayout
       return;
     boolean chinese = is_chinese();
     _mode_indicator.setText(chinese ? "中" : "Eng");
-    _mode_indicator.setContentDescription(
-        chinese ? "中文输入" : "English input");
-    if (_text_size > 0)
+    if (_compact)
+    {
+      _mode_indicator.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+      _mode_indicator.setContentDescription(getContext().getString(R.string.physical_keyboard_mode_chinese));
+    }
+    else if (_text_size > 0)
+    {
+      _mode_indicator.setContentDescription(chinese ? "中文输入" : "English input");
       set_text_size(_mode_indicator,
           _text_size * (chinese ? 0.42f : 0.32f), false);
+    }
   }
 
   /** The control is an icon, and the icon states which way it will toggle. */

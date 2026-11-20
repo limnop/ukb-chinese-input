@@ -1,0 +1,250 @@
+# Full spelling or pinyin<TAB>software name
+# AI assistants, coding tools, creative tools and local model software
+chatgpt	ChatGPT
+gpt	GPT
+codex	Codex
+openai	OpenAI
+claude	Claude
+claudecode	Claude Code
+claudesonnet	Claude Sonnet
+claudeopus	Claude Opus
+anthropic	Anthropic
+gemini	Gemini
+geminicli	Gemini CLI
+geminicodeassist	Gemini Code Assist
+googlegemini	Google Gemini
+notebooklm	NotebookLM
+copilot	Copilot
+microsoftcopilot	Microsoft Copilot
+githubcopilot	GitHub Copilot
+deepseek	DeepSeek
+shendusuosuo	深度求索
+grok	Grok
+perplexity	Perplexity
+cursor	Cursor
+windsurf	Windsurf
+trae	TRAE
+kiro	Kiro
+zed	Zed
+zededitor	Zed
+antigravity	Antigravity
+googleantigravity	Google Antigravity
+amazonq	Amazon Q
+qdeveloper	Amazon Q Developer
+jetbrainsai	JetBrains AI
+junie	Junie
+aider	Aider
+cline	Cline
+roocode	Roo Code
+opencode	OpenCode
+openclaw	OpenClaw
+continue	Continue
+tabnine	Tabnine
+qodo	Qodo
+warp	Warp
+qwen	Qwen
+qwencode	Qwen Code
+tongyi	通义
+tongyiqianwen	通义千问
+qianwen	千问
+tongyilingma	通义灵码
+lingma	灵码
+qianwenbiancheng	Qwen Code
+kimi	Kimi
+kimicode	Kimi Code
+yuezhianmian	月之暗面
+doubao	豆包
+kouzi	扣子
+coze	Coze
+yuanbao	元宝
+tengxunyuanbao	腾讯元宝
+hunyuan	混元
+wenxin	文心
+wenxinyiyan	文心一言
+wenxinzhushou	文心助手
+baiduwenxin	百度文心
+yiyan	文心一言
+zhipu	智谱
+zhipuqingyan	智谱清言
+qingyan	智谱清言
+chatglm	ChatGLM
+glm	GLM
+miaoda	秒哒
+minimax	MiniMax
+hailuo	海螺 AI
+hailuoai	海螺 AI
+jimeng	即梦
+jimengai	即梦 AI
+keling	可灵
+kelingai	可灵 AI
+kling	Kling AI
+klingai	Kling AI
+xinghuo	讯飞星火
+xunfeixinghuo	讯飞星火
+tiangong	天工 AI
+baichuan	百川
+shangliang	商量
+sensetime	商汤
+ririxin	日日新
+jianying	剪映
+capcut	CapCut
+midjourney	Midjourney
+stablediffusion	Stable Diffusion
+comfyui	ComfyUI
+firefly	Adobe Firefly
+adobefirefly	Adobe Firefly
+canva	Canva
+sora	Sora
+veo	Veo
+runway	Runway
+pika	Pika
+luma	Luma AI
+ideogram	Ideogram
+leonardoai	Leonardo.Ai
+suno	Suno
+udio	Udio
+elevenlabs	ElevenLabs
+whisper	Whisper
+ollama	Ollama
+lmstudio	LM Studio
+llamacpp	llama.cpp
+llama	Llama
+vllm	vLLM
+openwebui	Open WebUI
+cherrystudio	Cherry Studio
+lobechat	LobeChat
+anythingllm	AnythingLLM
+jan	Jan
+gptstudio	GPT Studio
+huggingface	Hugging Face
+transformers	Transformers
+diffusers	Diffusers
+langchain	LangChain
+langgraph	LangGraph
+llamaindex	LlamaIndex
+dify	Dify
+flowise	Flowise
+ragflow	RAGFlow
+xinference	Xinference
+sglang	SGLang
+autogen	AutoGen
+crewai	CrewAI
+manus	Manus
+notionai	Notion AI
+grammarly	Grammarly
+deepl	DeepL
+# General software, developer tools, office and communication
+vscode	VS Code
+visualstudiocode	Visual Studio Code
+visualstudio	Visual Studio
+androidstudio	Android Studio
+intellij	IntelliJ IDEA
+intellijidea	IntelliJ IDEA
+pycharm	PyCharm
+webstorm	WebStorm
+clion	CLion
+goland	GoLand
+rider	Rider
+xcode	Xcode
+eclipse	Eclipse
+neovim	Neovim
+emacs	Emacs
+vim	Vim
+github	GitHub
+gitlab	GitLab
+gitee	Gitee
+bitbucket	Bitbucket
+git	Git
+docker	Docker
+kubernetes	Kubernetes
+jenkins	Jenkins
+postman	Postman
+insomnia	Insomnia
+nodejs	Node.js
+typescript	TypeScript
+javascript	JavaScript
+python	Python
+pytorch	PyTorch
+tensorflow	TensorFlow
+jax	JAX
+jupyter	Jupyter
+jupyterlab	JupyterLab
+anaconda	Anaconda
+kaggle	Kaggle
+rust	Rust
+rustup	rustup
+scrcpy	scrcpy
+waydroid	Waydroid
+tailscale	Tailscale
+termux	Termux
+homebrew	Homebrew
+chrome	Google Chrome
+googlechrome	Google Chrome
+chromium	Chromium
+firefox	Firefox
+safari	Safari
+edge	Microsoft Edge
+microsoftedge	Microsoft Edge
+brave	Brave
+opera	Opera
+vivaldi	Vivaldi
+wechat	WeChat
+weixin	微信
+weixinshurufa	微信输入法
+wecom	WeCom
+qiyeweixin	企业微信
+dingtalk	DingTalk
+dingding	钉钉
+feishu	飞书
+lark	Lark
+qq	QQ
+telegram	Telegram
+signal	Signal
+whatsapp	WhatsApp
+discord	Discord
+slack	Slack
+teams	Microsoft Teams
+microsoftteams	Microsoft Teams
+zoom	Zoom
+notion	Notion
+obsidian	Obsidian
+logseq	Logseq
+typora	Typora
+evernote	Evernote
+libreoffice	LibreOffice
+wpsoffice	WPS Office
+wps	WPS
+microsoftoffice	Microsoft Office
+word	Microsoft Word
+excel	Microsoft Excel
+powerpoint	Microsoft PowerPoint
+outlook	Microsoft Outlook
+onenote	Microsoft OneNote
+googledocs	Google Docs
+googlesheets	Google Sheets
+googledrive	Google Drive
+onedrive	OneDrive
+dropbox	Dropbox
+figma	Figma
+sketch	Sketch
+photoshop	Adobe Photoshop
+illustrator	Adobe Illustrator
+lightroom	Adobe Lightroom
+premiere	Adobe Premiere Pro
+aftereffects	Adobe After Effects
+blender	Blender
+davinciresolve	DaVinci Resolve
+obs	OBS Studio
+obsstudio	OBS Studio
+vlc	VLC
+spotify	Spotify
+steam	Steam
+jira	Jira
+confluence	Confluence
+trello	Trello
+linear	Linear
+todoist	Todoist
+bitwarden	Bitwarden
+keepass	KeePass
+syncthing	Syncthing
+synclipboard	SyncClipboard
