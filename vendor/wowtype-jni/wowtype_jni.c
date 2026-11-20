@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/log.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +68,9 @@ Java_juloo_keyboard2_staged_WowtypePinyinEngine_nativeNew(
     (void)wowtype_engine_set_beam_size(engine, 20);
     if (history != NULL) (void)wowtype_engine_load_history(engine, history);
     if (user_dict != NULL) (void)wowtype_engine_load_user_dict(engine, user_dict);
+  } else {
+    __android_log_print(ANDROID_LOG_ERROR, "WowType", "Native engine initialization failed: %s",
+        wowtype_last_error());
   }
   release_utf(env, user_dict_path, user_dict);
   release_utf(env, history_path, history);

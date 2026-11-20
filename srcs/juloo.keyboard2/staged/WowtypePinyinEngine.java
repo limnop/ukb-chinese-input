@@ -112,30 +112,55 @@ public final class WowtypePinyinEngine
       String name, String hash) throws IOException, java.security.NoSuchAlgorithmException
   {
     File file = new File(dir, name), stamp = new File(dir, name + ".sha256");
-    if (file.exists() && stamp.exists())
-      try (java.io.FileInputStream in = new java.io.FileInputStream(stamp))
+    if (file.isFile() && stamp.isFile())
+      try (InputStream in = new java.io.FileInputStream(stamp))
       {
         byte[] value = new byte[64];
-        if (in.read(value) == 64 && hash.equals(new String(value, "US-ASCII"))) return file;
+        if (in.read(value) == value.length && hash.equals(new String(value, "US-ASCII")))
+        {
+          try (InputStream installed = new java.io.FileInputStream(file))
+          {
+            if (hash.equals(copy_and_hash(installed, null)))
+              return file;
+          }
+          android.util.Log.w("WowType", "Replacing damaged data: " + asset);
+        }
       }
     File temp = new File(dir, name + ".tmp");
-    java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-    try (InputStream in = app.getAssets().open(asset); FileOutputStream out = new FileOutputStream(temp))
+    try
     {
-      byte[] buffer = new byte[65536]; int n;
-      while ((n = in.read(buffer)) != -1) { out.write(buffer, 0, n); digest.update(buffer, 0, n); }
-      out.getFD().sync();
+      try (InputStream in = app.getAssets().open(asset); FileOutputStream out = new FileOutputStream(temp))
+      {
+        if (!hash.equals(copy_and_hash(in, out)))
+          throw new IOException("Asset checksum mismatch: " + asset);
+        out.getFD().sync();
+      }
+      if (!temp.renameTo(file)) throw new IOException("Cannot install " + asset);
     }
-    StringBuilder actual = new StringBuilder();
-    for (byte b : digest.digest()) actual.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-    if (!hash.equals(actual.toString())) throw new IOException("Asset checksum mismatch: " + asset);
-    if (!temp.renameTo(file)) throw new IOException("Cannot install " + asset);
+    finally { if (temp.exists()) temp.delete(); }
     File cache = new File(dir, name + ".wcache");
     if (cache.exists() && !cache.delete()) throw new IOException("Cannot invalidate lexicon cache");
     File stampTemp = new File(dir, name + ".sha256.tmp");
     try (FileOutputStream out = new FileOutputStream(stampTemp)) { out.write(hash.getBytes("US-ASCII")); out.getFD().sync(); }
     if (!stampTemp.renameTo(stamp)) throw new IOException("Cannot write data version");
     return file;
+  }
+
+  private static String copy_and_hash(InputStream in, FileOutputStream out)
+      throws IOException, java.security.NoSuchAlgorithmException
+  {
+    java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+    byte[] buffer = new byte[65536];
+    int n;
+    while ((n = in.read(buffer)) != -1)
+    {
+      digest.update(buffer, 0, n);
+      if (out != null) out.write(buffer, 0, n);
+    }
+    StringBuilder actual = new StringBuilder();
+    for (byte b : digest.digest())
+      actual.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
+    return actual.toString();
   }
 
   private static List<Composer.Candidate> candidates(String code, String context, int limit)
