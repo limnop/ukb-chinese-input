@@ -18,7 +18,6 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -26,6 +25,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
@@ -52,8 +52,8 @@ final class ClipboardSyncClient
   static final String SETTING_URL = "syncclipboard_url";
   static final String SETTING_USER = "syncclipboard_user";
   static final String SETTING_PASSWORD = "syncclipboard_password";
+  static final String SETTING_CERT_PIN = "syncclipboard_cert_pin";
   static final String PREF_LEGACY_SETTINGS_MIGRATED = "settings_migrated_to_ukb";
-  private static final String PINNED_SERVER_HOST = "REDACTED";
   static final String PREF_UP_TEXT_HASHES = "uploaded_text_hashes";
   static final String PREF_DOWN_TEXT_HASHES = "downloaded_text_hashes";
   static final String PREF_UP_FILE_HASHES = "uploaded_file_hashes";
@@ -74,19 +74,18 @@ final class ClipboardSyncClient
 
   static final class Account
   {
-    final String url, user, password;
+    final String url, user, password, certificate_pin;
     final SharedPreferences prefs;
-    final Context context;
 
     Account(Context context)
     {
-      this.context = context.getApplicationContext();
       prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
       SharedPreferences settings = DirectBootAwarePreferences
           .get_shared_preferences(context);
       url = settings.getString(SETTING_URL, "").trim();
       user = settings.getString(SETTING_USER, "");
       password = settings.getString(SETTING_PASSWORD, "");
+      certificate_pin = settings.getString(SETTING_CERT_PIN, "").trim();
     }
 
     boolean configured() { return url.length() > 0; }
@@ -496,10 +495,9 @@ final class ClipboardSyncClient
       String method) throws Exception
   {
     HttpURLConnection conn = (HttpURLConnection)url.openConnection();
-    if (conn instanceof HttpsURLConnection
-        && PINNED_SERVER_HOST.equalsIgnoreCase(url.getHost()))
+    if (!account.certificate_pin.isEmpty())
       ((HttpsURLConnection)conn).setSSLSocketFactory(
-          pinned_server_socket_factory(account.context));
+          pinned_server_socket_factory(account.certificate_pin));
     conn.setRequestMethod(method);
     conn.setConnectTimeout(TIMEOUT_MS);
     conn.setReadTimeout(TIMEOUT_MS);
@@ -512,19 +510,12 @@ final class ClipboardSyncClient
     return conn;
   }
 
-  private static SSLSocketFactory pinned_server_socket_factory(Context context)
+  private static SSLSocketFactory pinned_server_socket_factory(String configured_pin)
       throws Exception
   {
-    final X509Certificate pinned;
-    java.io.InputStream cert_stream = context.getResources()
-        .openRawResource(R.raw.syncclipboard_server_ca);
-    try
-    {
-      pinned = (X509Certificate)CertificateFactory.getInstance("X.509")
-          .generateCertificate(cert_stream);
-    }
-    finally { cert_stream.close(); }
-    pinned.checkValidity();
+    String pin = configured_pin.replace(":", "");
+    if (!pin.matches("[0-9a-fA-F]{64}"))
+      throw new CertificateException("Invalid SHA-256 certificate fingerprint");
 
     X509TrustManager trust_manager = new X509TrustManager()
     {
@@ -537,14 +528,23 @@ final class ClipboardSyncClient
       @Override public void checkServerTrusted(X509Certificate[] chain,
           String auth_type) throws CertificateException
       {
-        if (chain == null || chain.length == 0 || !pinned.equals(chain[0]))
+        if (chain == null || chain.length == 0)
           throw new CertificateException("Unexpected SyncClipboard server certificate");
+        try
+        {
+          if (!pin.equalsIgnoreCase(sha256(chain[0].getEncoded())))
+            throw new CertificateException("Unexpected SyncClipboard server certificate");
+        }
+        catch (NoSuchAlgorithmException e)
+        {
+          throw new CertificateException(e);
+        }
         chain[0].checkValidity();
       }
 
       @Override public X509Certificate[] getAcceptedIssuers()
       {
-        return new X509Certificate[] { pinned };
+        return new X509Certificate[0];
       }
     };
     SSLContext ssl_context = SSLContext.getInstance("TLS");
@@ -686,7 +686,7 @@ final class ClipboardSyncClient
     return hex(digest.digest());
   }
 
-  private static String sha256(byte[] data) throws Exception
+  private static String sha256(byte[] data) throws NoSuchAlgorithmException
   {
     return hex(MessageDigest.getInstance("SHA-256").digest(data));
   }

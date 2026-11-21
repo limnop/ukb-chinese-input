@@ -132,6 +132,8 @@
     <string name="clipboard_sync_url">HTTPS 服务地址</string>
     <string name="clipboard_sync_user">用户名</string>
     <string name="clipboard_sync_password">密码</string>
+    <string name="clipboard_sync_certificate_pin">证书 SHA-256 指纹</string>
+    <string name="clipboard_sync_certificate_pin_summary">自签名服务器可选。请从可信的服务器证书获取指纹。</string>
     <string name="clipboard_sync_save">保存</string>
     <string name="clipboard_sync_ready">SyncClipboard：%1$s</string>
     <string name="clipboard_sync_not_configured">尚未配置 SyncClipboard</string>

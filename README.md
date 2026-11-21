@@ -25,7 +25,7 @@
 - 在文本密码框中自动切换到英文布局。软键盘底栏的快速收起按钮位于右侧。
 - 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - 剪贴板默认持久保存最近 70 条文本；软键盘打开时自动轮询远端更新。可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并预览结果。重复下载时会复用仍保存在下载目录中的同一文件。密码框和实体键盘模式下暂停自动轮询。
-- 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和随应用提供的服务器证书。
+- 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和系统信任的证书。自签名服务器可在「SyncClipboard 设置」中填写可信服务器证书的 SHA-256 指纹，例如使用 `openssl x509 -in server.pem -noout -fingerprint -sha256` 获取等号后的值。
 
 ### Emoji 面板
 
@@ -103,7 +103,7 @@ Get the release or debug APK from [GitHub Releases](https://github.com/limnop/uk
 - Password text fields switch to an English layout automatically. The quick-hide button is on the right of the on-screen keyboard’s bottom row.
 - A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.
 - Clipboard history persistently keeps the latest 70 text entries by default. The on-screen keyboard polls the configured SyncClipboard server for remote updates while open. You can manually upload and download text, images, and files and preview the results. Repeated downloads reuse the same file while it remains in the downloads folder. Polling pauses in password fields and physical keyboard mode.
-- Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. The connection uses HTTPS and a certificate bundled for the configured server.
+- Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. Connections use HTTPS and the system trust store. For a self-signed server, enter the SHA-256 fingerprint from a trusted copy of the server certificate in SyncClipboard settings.
 
 ### Emoji panel
 

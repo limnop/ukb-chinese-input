@@ -1,0 +1,2 @@
+- Remove server-specific SyncClipboard settings and certificates from the app.
+- Use system HTTPS trust by default. Self-signed servers can use a locally configured certificate fingerprint.

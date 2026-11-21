@@ -167,6 +167,8 @@
     <string name="clipboard_sync_url">HTTPS service URL</string>
     <string name="clipboard_sync_user">Username</string>
     <string name="clipboard_sync_password">Password</string>
+    <string name="clipboard_sync_certificate_pin">SHA-256 certificate fingerprint</string>
+    <string name="clipboard_sync_certificate_pin_summary">Optional for a self-signed server. Enter the fingerprint from a trusted copy of its certificate.</string>
     <string name="clipboard_sync_save">Save</string>
     <string name="clipboard_sync_ready">SyncClipboard: %1$s</string>
     <string name="clipboard_sync_not_configured">SyncClipboard is not configured</string>

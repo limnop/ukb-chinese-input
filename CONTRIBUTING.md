@@ -275,7 +275,10 @@ emulator for clean-history comparisons. Sample timings are not benchmarks.
 3. Build both APKs from that commit with
    `./gradlew testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease`.
    Verify the APK package names, version fields, and signatures. Preserve the
-   production signing key for in-place upgrades.
+   production signing key for in-place upgrades. Supply the release signing
+   configuration through `RELEASE_KEYSTORE`, `RELEASE_KEYSTORE_PASSWORD`,
+   `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. Keep credentials outside
+   the repository.
 4. Push the commit and its `v<versionName>` tag. Create the GitHub Release with
    both signed APKs named `ukb-chinese-input-<versionName>-release.apk` and
    `ukb-chinese-input-<versionName>-debug.apk`. Verify that both attached APKs

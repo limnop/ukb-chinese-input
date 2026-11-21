@@ -73,6 +73,7 @@
       <EditTextPreference android:key="syncclipboard_url" android:title="@string/clipboard_sync_url" android:dialogTitle="@string/clipboard_sync_url" android:inputType="textUri" android:singleLine="true" android:defaultValue=""/>
       <EditTextPreference android:key="syncclipboard_user" android:title="@string/clipboard_sync_user" android:dialogTitle="@string/clipboard_sync_user" android:inputType="textVisiblePassword" android:singleLine="true" android:defaultValue=""/>
       <EditTextPreference android:key="syncclipboard_password" android:title="@string/clipboard_sync_password" android:dialogTitle="@string/clipboard_sync_password" android:inputType="textPassword" android:singleLine="true" android:defaultValue=""/>
+      <EditTextPreference android:key="syncclipboard_cert_pin" android:title="@string/clipboard_sync_certificate_pin" android:summary="@string/clipboard_sync_certificate_pin_summary" android:inputType="textVisiblePassword" android:singleLine="true" android:defaultValue=""/>
     </PreferenceScreen>
   </PreferenceCategory>
 </PreferenceScreen>
