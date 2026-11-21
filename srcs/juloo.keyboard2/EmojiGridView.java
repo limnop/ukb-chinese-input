@@ -2,239 +2,223 @@ package juloo.keyboard2;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.util.AttributeSet;
-import android.view.ContextThemeWrapper;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.widget.AbsListView;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class EmojiGridView extends GridView
 {
-  public static final int GROUP_LAST_USE = -1;
-
   private static final String LAST_USE_PREF = "emoji_last_use";
 
-  private List<Emoji> _emojiArray;
-  private HashMap<Emoji, Integer> _lastUsed;
+  private final Map<Emoji, Integer> _lastUsed = new HashMap<>();
+  private Emoji.Group _group;
+  private boolean _choosingVariants;
+  private int _categoryPosition;
 
-  /** Tap detection. [GridView] throws away a tap while its adapter data has
-      changed but no layout has run yet: [AbsListView.onTouchEvent] only enters
-      [TOUCH_MODE_DOWN] under `if (!mDataChanged)`. That is exactly the state
-      left by [setAdapter], which is what opening the emoji pane does, so the
-      first tap after entering the pane is ignored and keys start working only
-      after a scroll forces a layout. The tap is recognised here instead, which
-      does not depend on that internal state. [super.onTouchEvent] still gets
-      every event, so scrolling, flinging and the pressed feedback are
-      unchanged. */
-  private int _tap_slop;
-  private float _down_x;
-  private float _down_y;
-  private int _down_position = INVALID_POSITION;
-  private boolean _tap_pending = false;
-
-  /*
-   ** TODO: adapt column width and emoji size
-   ** TODO: use ArraySet instead of Emoji[]
-   */
   public EmojiGridView(Context context, AttributeSet attrs)
   {
     super(context, attrs);
     Emoji.init(context.getResources());
-    _tap_slop = ViewConfiguration.get(context).getScaledTouchSlop();
     loadLastUsed();
-    setEmojiGroup((_lastUsed.size() == 0) ? 0 : GROUP_LAST_USE);
-  }
-
-  public void setEmojiGroup(int group)
-  {
-    _emojiArray = (group == GROUP_LAST_USE) ? getLastEmojis() : Emoji.getEmojisByGroup(group);
-    setAdapter(new EmojiViewAdpater(getContext(), _emojiArray));
-    cancel_tap();
+    setEmojiGroup(_lastUsed.isEmpty() ? Emoji.Group.FACES : Emoji.Group.RECENT);
+    setOnItemClickListener((parent, view, position, id) -> view.performClick());
+    setOnItemLongClickListener((parent, view, position, id) -> view.performLongClick());
   }
 
   @Override
-  public boolean onTouchEvent(MotionEvent ev)
+  protected void onAttachedToWindow()
   {
-    switch (ev.getActionMasked())
+    super.onAttachedToWindow();
+    updateGroupBar();
+  }
+
+  void setEmojiGroup(Emoji.Group group)
+  {
+    _group = group;
+    _choosingVariants = false;
+    List<Emoji> entries;
+    if (group == Emoji.Group.RECENT)
     {
-      case MotionEvent.ACTION_DOWN:
-        _down_x = ev.getX();
-        _down_y = ev.getY();
-        _down_position = position_at(_down_x, _down_y);
-        _tap_pending = _down_position != INVALID_POSITION;
-        break;
-      case MotionEvent.ACTION_MOVE:
-        if (_tap_pending
-            && (Math.abs(ev.getX() - _down_x) > _tap_slop
-                || Math.abs(ev.getY() - _down_y) > _tap_slop))
-          _tap_pending = false;
-        break;
-      case MotionEvent.ACTION_UP:
-        /* A long press has no meaning on an emoji: skip it rather than
-           inserting on the release of a press-and-hold. */
-        if (_tap_pending
-            && ev.getEventTime() - ev.getDownTime()
-               < ViewConfiguration.getLongPressTimeout())
-          select(_down_position);
-        cancel_tap();
-        break;
-      case MotionEvent.ACTION_CANCEL:
-        cancel_tap();
-        break;
+      entries = new ArrayList<>(_lastUsed.keySet());
+      Collections.sort(entries, (a, b) -> Integer.compare(_lastUsed.get(b), _lastUsed.get(a)));
     }
-    super.onTouchEvent(ev);
+    else
+      entries = Emoji.getEmojisByGroup(group);
+    setAdapter(new EmojiAdapter(entries, false));
+    setSelection(0);
+    updateGroupBar();
+  }
+
+  private boolean openVariants(Emoji emoji)
+  {
+    _categoryPosition = getFirstVisiblePosition();
+    _choosingVariants = true;
+    setAdapter(new EmojiAdapter(emoji.variants, true));
+    setSelection(0);
+    updateGroupBar();
     return true;
   }
 
-  private void cancel_tap()
+  void closeVariants()
   {
-    _tap_pending = false;
-    _down_position = INVALID_POSITION;
-  }
-
-  /** Position under a local coordinate, [INVALID_POSITION] when there is no
-      cell there. [pointToPosition] covers the normal case; the fallback walks
-      the visible cells in case the grid has not indexed them yet. */
-  private int position_at(float x, float y)
-  {
-    int pos = pointToPosition((int)x, (int)y);
-    if (pos != INVALID_POSITION)
-      return pos;
-    for (int i = 0; i < getChildCount(); i++)
-    {
-      View child = getChildAt(i);
-      if (x >= child.getLeft() && x < child.getRight()
-          && y >= child.getTop() && y < child.getBottom())
-        return getFirstVisiblePosition() + i;
-    }
-    return INVALID_POSITION;
-  }
-
-  private void select(int pos)
-  {
-    if (_emojiArray == null || pos < 0 || pos >= _emojiArray.size())
+    if (!_choosingVariants)
       return;
-    Emoji emoji = _emojiArray.get(pos);
-    Config config = Config.globalConfig();
-    Integer used = _lastUsed.get(emoji);
-    _lastUsed.put(emoji, (used == null) ? 1 : used.intValue() + 1);
-    config.handler.key_up(emoji.kv(), Pointers.Modifiers.EMPTY);
-    saveLastUsed(); // TODO: opti
+    setEmojiGroup(_group);
+    setSelection(_categoryPosition);
   }
 
-  private List<Emoji> getLastEmojis()
+  private void updateGroupBar()
   {
-    List<Emoji> list = new ArrayList<>(_lastUsed.keySet());
-    Collections.sort(list, new Comparator<Emoji>()
-        {
-          public int compare(Emoji a, Emoji b)
-          {
-            return _lastUsed.get(b) - _lastUsed.get(a);
-          }
-        });
-    return list;
+    if (getParent() instanceof ViewGroup)
+    {
+      EmojiGroupButtonsBar bar = ((ViewGroup)getParent()).findViewById(R.id.emoji_group_bar);
+      if (bar != null)
+        bar.update(_group, _choosingVariants);
+    }
+  }
+
+  private void select(Emoji emoji)
+  {
+    Integer used = _lastUsed.get(emoji);
+    _lastUsed.put(emoji, used == null ? 1 : used + 1);
+    saveLastUsed();
+    closeVariants();
+    Config.globalConfig().handler.key_up(emoji.kv(), Pointers.Modifiers.EMPTY);
   }
 
   private void saveLastUsed()
   {
     SharedPreferences.Editor edit;
     try { edit = emojiSharedPreferences().edit(); }
-    catch (Exception _e) { return; }
-    HashSet<String> set = new HashSet<String>();
-    for (Emoji emoji : _lastUsed.keySet())
-      set.add(String.valueOf(_lastUsed.get(emoji)) + "-" + emoji.kv().getString());
-    edit.putStringSet(LAST_USE_PREF, set);
-    edit.apply();
+    catch (Exception e) { return; }
+    Set<String> set = new HashSet<>();
+    for (Map.Entry<Emoji, Integer> entry : _lastUsed.entrySet())
+      set.add(entry.getValue() + "-" + entry.getKey().kv().getString());
+    edit.putStringSet(LAST_USE_PREF, set).apply();
   }
 
   private void loadLastUsed()
   {
-    _lastUsed = new HashMap<Emoji, Integer>();
-    SharedPreferences prefs;
-    // Storage might not be available (eg. the device is locked), avoid
-    // crashing.
-    try { prefs = emojiSharedPreferences(); }
-    catch (Exception _e) { return; }
-    Set<String> lastUseSet = prefs.getStringSet(LAST_USE_PREF, null);
-    if (lastUseSet != null)
-      for (String emojiData : lastUseSet)
-      {
-        String[] data = emojiData.split("-", 2);
-        Emoji emoji;
-        if (data.length != 2)
-          continue ;
-        emoji = Emoji.getEmojiByString(data[1]);
-        if (emoji == null)
-          continue ;
-        _lastUsed.put(emoji, Integer.valueOf(data[0]));
-      }
-  }
-
-  SharedPreferences emojiSharedPreferences()
-  {
-    return getContext().getSharedPreferences("emoji_last_use", Context.MODE_PRIVATE);
-  }
-
-  static class EmojiView extends TextView
-  {
-    public EmojiView(Context context)
+    Set<String> saved;
+    // Credential-encrypted storage can be unavailable when the device is locked.
+    try { saved = emojiSharedPreferences().getStringSet(LAST_USE_PREF, null); }
+    catch (Exception e) { return; }
+    if (saved == null)
+      return;
+    for (String entry : saved)
     {
-      super(context);
+      String[] data = entry.split("-", 2);
+      if (data.length != 2)
+        continue;
+      Emoji emoji = Emoji.getEmojiByString(data[1]);
+      if (emoji == null)
+        continue;
+      try { _lastUsed.put(emoji, Integer.parseInt(data[0])); }
+      catch (NumberFormatException e) { /* Ignore an invalid usage count. */ }
+    }
+  }
+
+  private SharedPreferences emojiSharedPreferences()
+  {
+    return getContext().getSharedPreferences(LAST_USE_PREF, Context.MODE_PRIVATE);
+  }
+
+  private static class EmojiView extends TextView
+  {
+    private final Paint _markerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path _marker = new Path();
+    private final float _density;
+    private boolean _hasVariants;
+
+    EmojiView(Context context)
+    {
+      super(context, null, 0, R.style.emojiGridButton);
+      setTypeface(Emoji.typeface(context));
+      _density = getResources().getDisplayMetrics().density;
+      setLayoutParams(new AbsListView.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT, Math.round(44 * _density)));
+      _markerPaint.setColor(getCurrentTextColor());
+      _markerPaint.setAlpha(155);
     }
 
-    public void setEmoji(Emoji emoji)
+    void setEmoji(Emoji emoji, boolean hasVariants)
     {
       setText(emoji.kv().getString());
+      _hasVariants = hasVariants;
+      invalidate();
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh)
+    {
+      super.onSizeChanged(w, h, oldw, oldh);
+      float right = w - 5 * _density;
+      float bottom = h - 5 * _density;
+      float size = 5 * _density;
+      _marker.reset();
+      _marker.moveTo(right - size, bottom);
+      _marker.lineTo(right, bottom - size);
+      _marker.lineTo(right, bottom);
+      _marker.close();
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas)
+    {
+      super.onDraw(canvas);
+      if (_hasVariants)
+        canvas.drawPath(_marker, _markerPaint);
     }
   }
 
-  static class EmojiViewAdpater extends BaseAdapter
+  private class EmojiAdapter extends BaseAdapter
   {
-    Context _button_context;
+    private final List<Emoji> _entries;
+    private final boolean _showingVariants;
 
-    List<Emoji> _emojiArray;
-
-    public EmojiViewAdpater(Context context, List<Emoji> emojiArray)
+    EmojiAdapter(List<Emoji> entries, boolean showingVariants)
     {
-      _button_context = new ContextThemeWrapper(context, R.style.emojiGridButton);
-      _emojiArray = emojiArray;
+      _entries = entries;
+      _showingVariants = showingVariants;
     }
 
-    public int getCount()
-    {
-      if (_emojiArray == null)
-        return (0);
-      return (_emojiArray.size());
-    }
+    @Override
+    public int getCount() { return _entries.size(); }
 
-    public Object getItem(int pos)
-    {
-      return (_emojiArray.get(pos));
-    }
+    @Override
+    public Emoji getItem(int position) { return _entries.get(position); }
 
-    public long getItemId(int pos)
-    {
-      return (pos);
-    }
+    @Override
+    public long getItemId(int position) { return position; }
 
-    public View getView(int pos, View convertView, ViewGroup parent)
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent)
     {
-      EmojiView view = (EmojiView)convertView;
-
-      if (view == null)
-        view = new EmojiView(_button_context);
-      view.setEmoji(_emojiArray.get(pos));
+      EmojiView view = convertView == null
+          ? new EmojiView(parent.getContext()) : (EmojiView)convertView;
+      Emoji emoji = getItem(position);
+      boolean hasVariants = !_showingVariants && emoji.variants.size() > 1;
+      view.setEmoji(emoji, hasVariants);
+      // Let the cell handle taps directly. GridView ignores a first tap when its
+      // adapter has changed and layout is still pending.
+      view.setOnClickListener(v -> select(emoji));
+      view.setOnLongClickListener(hasVariants ? v -> openVariants(emoji) : null);
+      view.setLongClickable(hasVariants);
+      view.setFocusable(false);
       return view;
     }
   }

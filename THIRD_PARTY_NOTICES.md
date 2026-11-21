@@ -1,5 +1,14 @@
 # Third-party notices
 
+## Emoji panel
+
+The panel catalogue is derived from [Unicode Emoji 18.0 keyboard data](https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt).
+The Unicode License v3 is bundled as `assets/Unicode-Emoji-LICENSE.txt`.
+
+`assets/NotoColorEmoji.ttf` is the unmodified Noto Color Emoji 2D font (v2.057)
+from [Google's Unicode 18.0 release](https://github.com/googlefonts/noto-emoji/releases/tag/v2026-09-24-unicode18_0).
+The SIL Open Font License 1.1 is bundled as `assets/NotoColorEmoji-LICENSE.txt`.
+
 ## WowType Rust core
 
 `vendor/wowtype-core/` is derived from [Gloridust/WowType](https://github.com/Gloridust/WowType),

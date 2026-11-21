@@ -4,6 +4,17 @@
 
 本项目基于 [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboard) 修改。Unexpected Keyboard 是由 [Jules Aguillon（@Julow）](https://github.com/Julow) 发起的轻量 Android 键盘；本分支保留上游键盘功能，并加入中文输入和剪贴板同步。
 
+### 下载与安装
+
+从 [GitHub 发行版](https://github.com/limnop/ukb-chinese-input/releases/latest) 下载 APK，支持 Android 5.0 及以上系统。
+
+| 安装包 | 用途 | Android 包名 |
+| --- | --- | --- |
+| `*-release.apk` | 日常使用，可覆盖安装同签名的旧版 | `juloo.keyboard2` |
+| `*-debug.apk` | 测试与排查，可和正式版并装 | `juloo.keyboard2.debug` |
+
+安装后打开应用，点击「启用键盘」和「选择键盘」，然后在「在此试用」文本框检查输入。需要使用中文软键盘时，在「设置 → 布局」中添加拼音或注音布局。若 Android 提示签名不同，先备份需要保留的数据，再考虑卸载冲突版本或使用可并装的调试版。
+
 ### 本分支功能
 
 - 在「设置 → 样式 → 主题」按分类浏览配色。新增磷光终端、极简石墨和雾蓝亚克力：[键盘实拍对比](doc/keyboard-themes.png)。亚克力主题使用半透明色层。
@@ -15,6 +26,14 @@
 - 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 - 剪贴板默认持久保存最近 70 条文本；软键盘打开时自动轮询远端更新。可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并预览结果。重复下载时会复用仍保存在下载目录中的同一文件。密码框和实体键盘模式下暂停自动轮询。
 - 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和随应用提供的服务器证书。
+
+### Emoji 面板
+
+默认布局下，从底行 `Fn` 键向左下角的笑脸滑动打开面板。面板覆盖 Unicode Emoji 18.0 的 3,972 个标准条目，包含「常用」和笑脸、手势、人物、动物、食物、旅行、活动、物品、符号、旗帜十个分类。
+
+- 点按直接输入经典款。带角标的表情支持长按，随后点选肤色、性别、方向等变体。点「返回表情分类」可取消。
+- 270 面旗帜各有独立的格子。选过的具体变体也可以在「常用」找到。
+- 面板和独立的 Emoji 候选使用随包提供的 Noto Color Emoji 字体。普通文字和符号使用原有字体，上屏后的样式由接收应用决定。
 
 ### 实体键盘模式
 
@@ -54,11 +73,13 @@ scrcpy --keyboard=uhid
 
 ### 中文输入状态与构建
 
-拼音已完全切换到 [WowType](https://github.com/Gloridust/WowType)，不再回退到旧 Java 拼音引擎。当前随包数据约含 93 万条词条/读音记录，每次最多返回 1000 个候选，支持扩展区汉字。拼音纠错默认开启，模糊音默认关闭，可在设置中调整。覆盖安装后会按内容哈希更新词库与模型，并保留本地学习历史。
+拼音已完全切换到 [WowType](https://github.com/Gloridust/WowType)，不再回退到旧 Java 拼音引擎。当前随包数据约含 93 万条词条/读音记录，每次最多返回 1000 个候选，支持扩展区汉字。拼音纠错默认开启，模糊音默认关闭，可在设置中调整。启动时会校验词库与模型，发现数据损坏时从 APK 恢复。覆盖安装和修复数据均保留本地学习历史。
 
-当前 Debug 和 Release 各通过 61 项 JVM 测试。模拟器检查覆盖候选、整句、纠错、部分选词、退格、数据更新，以及《诗经》和软件名的精确匹配。整体输入质量尚未完成与上游的系统对比；完整数据在 x86_64 模拟器中进程 PSS 约 458 MiB，内存、首次加载和分段组词学习仍需优化。具体结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。
+当前 Debug 和 Release 各通过 61 项 JVM 测试。模拟器检查覆盖候选、整句、纠错、部分选词、退格、数据更新，以及《诗经》和软件名的精确匹配。2.2.0 还验证了 Emoji 字形覆盖和面板的点按、长按、取消与上屏。整体输入质量尚未完成与上游的系统对比；完整数据在 x86_64 模拟器中进程 PSS 约 458 MiB，内存、首次加载和分段组词学习仍需优化。具体结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。
 
 构建需要 Android SDK/NDK、Java、Python 3 和 Rust stable（rustup）。首次构建会下载固定版本的雾凇词库和语言模型，并校验模型 SHA-256；后续复用本地缓存。运行 `./gradlew assembleRelease` 构建发行版，签名配置及测试步骤见 [CONTRIBUTING.md](CONTRIBUTING.md#building-the-wowtype-pinyin-engine)。
+
+发布前在 [build.gradle.kts](build.gradle.kts) 同步更新 `versionName` 和 `versionCode`，其中 `versionCode` 必须大于此前发出的安装包。新功能提高次版本号，修复提高修订号。正式版和调试版从同一提交构建，核对两包版本与签名后，用 `v<versionName>` 标签发布并上传两份 APK。详见[发布步骤](CONTRIBUTING.md#releasing-this-fork)。
 
 ### 上游署名与许可证
 
@@ -67,6 +88,10 @@ scrcpy --keyboard=uhid
 ## English
 
 This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboard), the lightweight Android keyboard started by [Jules Aguillon (@Julow)](https://github.com/Julow). It retains the upstream keyboard and adds Chinese input and clipboard sync.
+
+### Download and install
+
+Get the release or debug APK from [GitHub Releases](https://github.com/limnop/ukb-chinese-input/releases/latest). The keyboard supports Android 5.0 and later. Use the release APK for daily typing. The debug APK has a separate Android application ID and can be installed alongside it. Open the app to enable and select the keyboard, then add a Pinyin or Zhuyin layout in settings.
 
 ### Features in this fork
 
@@ -79,6 +104,10 @@ This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboa
 - A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.
 - Clipboard history persistently keeps the latest 70 text entries by default. The on-screen keyboard polls the configured SyncClipboard server for remote updates while open. You can manually upload and download text, images, and files and preview the results. Repeated downloads reuse the same file while it remains in the downloads folder. Polling pauses in password fields and physical keyboard mode.
 - Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. The connection uses HTTPS and a certificate bundled for the configured server.
+
+### Emoji panel
+
+On the default layout, swipe down-left from `Fn` toward the smiley face. The panel includes all 3,972 standard Unicode Emoji 18.0 entries across ten categories, plus a frequently used tab. Tap to enter the default form. Hold a marked emoji to choose a skin tone, gender, direction, or other available variant. All 270 flags have their own cells. The panel and standalone emoji candidates use the bundled Noto Color Emoji font. The receiving app controls how committed text appears.
 
 ### Physical keyboard mode
 
@@ -117,7 +146,7 @@ Neither mode trains the pinyin dictionary. The `v` in ordinary pinyin such as
 
 ### Chinese input status and builds
 
-Pinyin now uses [WowType](https://github.com/Gloridust/WowType) exclusively, with no fallback to the former Java decoder. Bundled data contains approximately 930,000 word/reading entries, with up to 1,000 candidates per query and support for supplementary Han characters. Typo correction defaults to on and fuzzy pinyin to off; both are configurable. App updates replace changed dictionary/model assets using content hashes while preserving local learning history.
+Pinyin now uses [WowType](https://github.com/Gloridust/WowType) exclusively, with no fallback to the former Java decoder. Bundled data contains approximately 930,000 word/reading entries, with up to 1,000 candidates per query and support for supplementary Han characters. Typo correction defaults to on and fuzzy pinyin to off; both are configurable. Startup verifies the extracted dictionary and model, restores damaged files from the APK, and preserves local learning history.
 
 The Debug and Release variants each pass 61 JVM tests. Emulator checks cover candidates, sentences, typo correction, partial selection, backspace, data upgrades, and exact matches for Shijing text and software names. Overall input quality has not yet been systematically compared with upstream. Process PSS with the full data was about 458 MiB on the x86_64 emulator; memory use, initial loading and learning phrases across partial selections still need work. See the [porting and validation report](doc/WOWTYPE_PORTING_REPORT.md) for details (Chinese).
 

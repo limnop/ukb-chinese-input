@@ -789,6 +789,8 @@ public class Keyboard2 extends InputMethodService
         case SWITCH_EMOJI:
           if (_emojiPane == null)
             _emojiPane = (ViewGroup)inflate_view(R.layout.emoji_pane);
+          else
+            ((EmojiGridView)_emojiPane.findViewById(R.id.emoji_grid)).closeVariants();
           setInputView(_emojiPane);
           break;
 

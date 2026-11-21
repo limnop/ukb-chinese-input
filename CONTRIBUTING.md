@@ -263,3 +263,20 @@ and Build Tools 35.0.0. The smoke test checks real decoding, long-tail candidate
 supplementary Han characters and preservation of existing learning history.
 It configures the debug app to Pinyin and learns sample words. Use a disposable
 emulator for clean-history comparisons. Sample timings are not benchmarks.
+
+## Releasing this fork
+
+1. Check the latest GitHub release and any APKs previously distributed outside
+   GitHub. In `build.gradle.kts`, increment `versionCode` past all previously
+   distributed codes. Update `versionName` with the next minor version for
+   features or the next patch version for fixes.
+2. Update the README and write the release notes. Keep the new version and
+   notes in the release commit.
+3. Build both APKs from that commit with
+   `./gradlew testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease`.
+   Verify the APK package names, version fields, and signatures. Preserve the
+   production signing key for in-place upgrades.
+4. Push the commit and its `v<versionName>` tag. Create the GitHub Release with
+   both signed APKs named `ukb-chinese-input-<versionName>-release.apk` and
+   `ukb-chinese-input-<versionName>-debug.apk`. Verify that both attached APKs
+   are downloadable before marking the release complete.

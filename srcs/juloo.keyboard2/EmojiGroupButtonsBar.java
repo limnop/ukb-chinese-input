@@ -3,60 +3,61 @@ package juloo.keyboard2;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.ContextThemeWrapper;
-import android.view.MotionEvent;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.LinearLayout.LayoutParams;
 import android.widget.LinearLayout;
+import java.util.EnumMap;
+import java.util.Map;
 
 public class EmojiGroupButtonsBar extends LinearLayout
 {
-  private EmojiGridView _emoji_grid = null;
+  private final Map<Emoji.Group, Button> _buttons = new EnumMap<>(Emoji.Group.class);
+  private final LinearLayout _groups;
+  private final Button _back;
 
   public EmojiGroupButtonsBar(Context context, AttributeSet attrs)
   {
     super(context, attrs);
-    Emoji.init(context.getResources());
-    add_group(EmojiGridView.GROUP_LAST_USE, "\uD83D\uDD59");
-    for (int i = 0; i < Emoji.getNumGroups(); i++)
+    _groups = new LinearLayout(context);
+    addView(_groups, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    for (Emoji.Group group : Emoji.Group.values())
     {
-      Emoji first = Emoji.getEmojisByGroup(i).get(0);
-      add_group(i, first.kv().getString());
-    }
-  }
-
-  void add_group(int id, String symbol)
-  {
-    addView(this.new EmojiGroupButton(getContext(), id, symbol),
-        new LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT, 1.f));
-  }
-
-  EmojiGridView get_emoji_grid()
-  {
-    if (_emoji_grid == null)
-      _emoji_grid = (EmojiGridView)((ViewGroup)(getParent())).findViewById(R.id.emoji_grid);
-    return _emoji_grid;
-  }
-
-  class EmojiGroupButton extends Button implements View.OnTouchListener
-  {
-    int _group_id;
-
-    public EmojiGroupButton(Context context, int group_id, String symbol)
-    {
-      super(new ContextThemeWrapper(context, R.style.emojiTypeButton), null, 0);
-      _group_id = group_id;
-      setText(symbol);
-      setOnTouchListener(this);
+      Button button = makeButton(context, group.icon);
+      button.setTypeface(Emoji.typeface(context));
+      button.setContentDescription(context.getString(group.label));
+      button.setOnClickListener(v -> grid().setEmojiGroup(group));
+      _groups.addView(button, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+      _buttons.put(group, button);
     }
 
-    public boolean onTouch(View view, MotionEvent event)
+    _back = makeButton(context, context.getString(R.string.emoji_variants_back));
+    _back.setOnClickListener(v -> grid().closeVariants());
+    addView(_back, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    _back.setVisibility(GONE);
+  }
+
+  private Button makeButton(Context context, String label)
+  {
+    Button button = new Button(new ContextThemeWrapper(context, R.style.emojiTypeButton), null, 0);
+    button.setText(label);
+    return button;
+  }
+
+  private EmojiGridView grid()
+  {
+    return ((ViewGroup)getParent()).findViewById(R.id.emoji_grid);
+  }
+
+  void update(Emoji.Group group, boolean choosingVariants)
+  {
+    _groups.setVisibility(choosingVariants ? GONE : VISIBLE);
+    _back.setVisibility(choosingVariants ? VISIBLE : GONE);
+    for (Map.Entry<Emoji.Group, Button> entry : _buttons.entrySet())
     {
-      if (event.getAction() != MotionEvent.ACTION_DOWN)
-        return false;
-      get_emoji_grid().setEmojiGroup(_group_id);
-      return true;
+      Button button = entry.getValue();
+      boolean selected = entry.getKey() == group;
+      button.setSelected(selected);
+      button.setAlpha(selected ? 1f : 0.72f);
     }
   }
 }

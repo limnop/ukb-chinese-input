@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import juloo.keyboard2.Config;
+import juloo.keyboard2.Emoji;
 import juloo.keyboard2.KeyboardData;
 import juloo.keyboard2.R;
 import juloo.keyboard2.VibratorCompat;
@@ -318,10 +319,10 @@ public class CandidatesView extends LinearLayout
         SpannableString label = new SpannableString(prefix + candidate.text);
         label.setSpan(new RelativeSizeSpan(0.65f), 0, prefix.length(),
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        text.setText(label);
+        text.setText(Emoji.styleCandidate(getContext(), label, candidate.text));
       }
       else
-        text.setText(candidate.text);
+        text.setText(Emoji.styleCandidate(getContext(), candidate.text, candidate.text));
       if (_compact)
         text.setEllipsize(TextUtils.TruncateAt.END);
       /* Annotations are never drawn, so their content is not built at all:
@@ -720,7 +721,7 @@ public class CandidatesView extends LinearLayout
               ViewGroup.LayoutParams.MATCH_PARENT, cell_h));
       }
       final Composer.Candidate candidate = _candidates.get(i);
-      cell.setText(candidate.text);
+      cell.setText(Emoji.styleCandidate(getContext(), candidate.text, candidate.text));
       if (_candidate_size > 0)
         cell.setTextSize(TypedValue.COMPLEX_UNIT_PX, _candidate_size);
       cell.setOnClickListener(new View.OnClickListener()

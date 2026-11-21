@@ -1,0 +1,5 @@
+- Unicode Emoji 18.0 with long-press variants, flag browsing and bundled color emoji.
+- WowType pinyin with sentence candidates, typo correction, local learning, U component lookup and V calculations.
+- Physical keyboard pinyin with floating candidates, also usable through scrcpy UHID.
+- Bundled Shijing text and software names, categorized themes and optional SyncClipboard.
+- Repair damaged pinyin dictionary and model files at startup.

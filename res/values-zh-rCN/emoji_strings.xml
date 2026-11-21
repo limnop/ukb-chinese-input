@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="emoji_group_recent">常用</string>
+  <string name="emoji_group_faces">笑脸与情绪</string>
+  <string name="emoji_group_gestures">手势与身体</string>
+  <string name="emoji_group_people">人物与角色</string>
+  <string name="emoji_group_nature">动物与自然</string>
+  <string name="emoji_group_food">食物与饮品</string>
+  <string name="emoji_group_travel">旅行与地点</string>
+  <string name="emoji_group_activities">活动与运动</string>
+  <string name="emoji_group_objects">物品</string>
+  <string name="emoji_group_symbols">表情符号</string>
+  <string name="emoji_group_flags">旗帜</string>
+  <string name="emoji_variants_back">‹ 返回表情分类</string>
+</resources>
