@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="emoji_group_more">更多</string>
+  <string name="emoji_group_more_selected">更多，%1$s</string>
+  <string name="emoji_app_qq">QQ</string>
+  <string name="emoji_app_wechat">微信</string>
+  <string name="emoji_app_douyin">抖音</string>
+  <string name="emoji_app_bilibili">哔哩哔哩</string>
   <string name="emoji_group_recent">常用</string>
   <string name="emoji_group_faces">笑脸与情绪</string>
   <string name="emoji_group_gestures">手势与身体</string>

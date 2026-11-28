@@ -2,9 +2,15 @@ package juloo.keyboard2;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ImageSpan;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +32,8 @@ public class EmojiGridView extends GridView
 
   private final Map<Emoji, Integer> _lastUsed = new HashMap<>();
   private Emoji.Group _group;
+  private Emoji.Group _unicodeGroup;
+  private NativeEmoji _platform;
   private boolean _choosingVariants;
   private int _categoryPosition;
 
@@ -48,19 +56,42 @@ public class EmojiGridView extends GridView
 
   void setEmojiGroup(Emoji.Group group)
   {
+    if (group == Emoji.Group.NATIVE && _platform == null)
+      return;
     _group = group;
     _choosingVariants = false;
     List<Emoji> entries;
-    if (group == Emoji.Group.RECENT)
+    if (group == Emoji.Group.NATIVE)
+      entries = _platform.entries(getContext().getAssets());
+    else if (group == Emoji.Group.RECENT)
     {
       entries = new ArrayList<>(_lastUsed.keySet());
       Collections.sort(entries, (a, b) -> Integer.compare(_lastUsed.get(b), _lastUsed.get(a)));
     }
     else
       entries = Emoji.getEmojisByGroup(group);
+    if (group != Emoji.Group.NATIVE)
+      _unicodeGroup = group;
     setAdapter(new EmojiAdapter(entries, false));
     setSelection(0);
     updateGroupBar();
+  }
+
+  void setPlatform(NativeEmoji platform)
+  {
+    if (_platform == platform)
+      return;
+    _platform = platform;
+    setEmojiGroup(_platform == null ? _unicodeGroup : Emoji.Group.NATIVE);
+  }
+
+  void open(NativeEmoji platform)
+  {
+    setPlatform(platform);
+    if (_platform != null && (_group != Emoji.Group.NATIVE || _choosingVariants))
+      setEmojiGroup(Emoji.Group.NATIVE);
+    else
+      closeVariants();
   }
 
   private boolean openVariants(Emoji emoji)
@@ -87,16 +118,19 @@ public class EmojiGridView extends GridView
     {
       EmojiGroupButtonsBar bar = ((ViewGroup)getParent()).findViewById(R.id.emoji_group_bar);
       if (bar != null)
-        bar.update(_group, _choosingVariants);
+        bar.update(_group, _choosingVariants, _platform);
     }
   }
 
   private void select(Emoji emoji)
   {
-    Integer used = _lastUsed.get(emoji);
-    _lastUsed.put(emoji, used == null ? 1 : used + 1);
-    saveLastUsed();
-    closeVariants();
+    if (!emoji.isNative())
+    {
+      Integer used = _lastUsed.get(emoji);
+      _lastUsed.put(emoji, used == null ? 1 : used + 1);
+      saveLastUsed();
+      closeVariants();
+    }
     Config.globalConfig().handler.key_up(emoji.kv(), Pointers.Modifiers.EMPTY);
   }
 
@@ -147,7 +181,6 @@ public class EmojiGridView extends GridView
     EmojiView(Context context)
     {
       super(context, null, 0, R.style.emojiGridButton);
-      setTypeface(Emoji.typeface(context));
       _density = getResources().getDisplayMetrics().density;
       setLayoutParams(new AbsListView.LayoutParams(
           ViewGroup.LayoutParams.MATCH_PARENT, Math.round(44 * _density)));
@@ -157,7 +190,25 @@ public class EmojiGridView extends GridView
 
     void setEmoji(Emoji emoji, boolean hasVariants)
     {
-      setText(emoji.kv().getString());
+      CharSequence text = emoji.name;
+      if (emoji.isNative())
+      {
+        Bitmap image = emoji.bitmap(getContext());
+        if (image != null)
+        {
+          BitmapDrawable drawable = new BitmapDrawable(getResources(), image);
+          int size = Math.round(30 * _density);
+          int longest = Math.max(image.getWidth(), image.getHeight());
+          drawable.setBounds(0, 0, image.getWidth() * size / longest,
+              image.getHeight() * size / longest);
+          SpannableString preview = new SpannableString("\uFFFC");
+          preview.setSpan(new ImageSpan(drawable), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+          text = preview;
+        }
+      }
+      setTypeface(emoji.isNative() ? Typeface.DEFAULT : Emoji.typeface(getContext()));
+      setContentDescription(emoji.isNative() ? emoji.name : null);
+      setText(text);
       _hasVariants = hasVariants;
       invalidate();
     }
@@ -189,11 +240,13 @@ public class EmojiGridView extends GridView
   {
     private final List<Emoji> _entries;
     private final boolean _showingVariants;
+    private final NativeEmoji _editorPlatform;
 
     EmojiAdapter(List<Emoji> entries, boolean showingVariants)
     {
       _entries = entries;
       _showingVariants = showingVariants;
+      _editorPlatform = _platform;
     }
 
     @Override
@@ -215,7 +268,10 @@ public class EmojiGridView extends GridView
       view.setEmoji(emoji, hasVariants);
       // Let the cell handle taps directly. GridView ignores a first tap when its
       // adapter has changed and layout is still pending.
-      view.setOnClickListener(v -> select(emoji));
+      view.setOnClickListener(v -> {
+        if (!emoji.isNative() || _editorPlatform == _platform)
+          select(emoji);
+      });
       view.setOnLongClickListener(hasVariants ? v -> openVariants(emoji) : null);
       view.setLongClickable(hasVariants);
       view.setFocusable(false);

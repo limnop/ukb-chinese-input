@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="emoji_group_more">More</string>
+  <string name="emoji_group_more_selected">More, %1$s</string>
+  <string name="emoji_app_qq">QQ</string>
+  <string name="emoji_app_wechat">WeChat</string>
+  <string name="emoji_app_douyin">Douyin</string>
+  <string name="emoji_app_bilibili">Bilibili</string>
   <string name="emoji_group_recent">Frequently used</string>
   <string name="emoji_group_faces">Smileys and emotion</string>
   <string name="emoji_group_gestures">Gestures and body</string>

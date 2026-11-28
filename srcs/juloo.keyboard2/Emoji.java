@@ -2,14 +2,18 @@ package juloo.keyboard2;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextPaint;
 import android.text.style.MetricAffectingSpan;
+import android.util.LruCache;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -23,6 +27,7 @@ public final class Emoji
 {
   enum Group
   {
+    NATIVE("", 0),
     RECENT("🕘", R.string.emoji_group_recent),
     FACES("😀", R.string.emoji_group_faces),
     GESTURES("👋", R.string.emoji_group_gestures),
@@ -46,19 +51,52 @@ public final class Emoji
   }
 
   private final KeyValue _kv;
+  final String name;
+  private final String _image;
   /** Every entry in a family, starting with its classic form. */
   final List<Emoji> variants;
 
   private Emoji(String text, List<Emoji> variants)
   {
+    this(text, variants, text, null);
+  }
+
+  Emoji(String text, String name, String image)
+  {
+    this(text, Collections.emptyList(), name, image);
+  }
+
+  private Emoji(String text, List<Emoji> variants, String name, String image)
+  {
     _kv = new KeyValue(text, KeyValue.Kind.String, 0, 0);
     this.variants = variants;
+    this.name = name;
+    _image = image;
   }
 
   public KeyValue kv() { return _kv; }
 
+  boolean isNative() { return _image != null; }
+
+  Bitmap bitmap(Context context)
+  {
+    Bitmap bitmap = _images.get(_image);
+    if (bitmap == null)
+    {
+      try (InputStream stream = context.getAssets().open(_image))
+      {
+        bitmap = BitmapFactory.decodeStream(stream);
+        if (bitmap != null)
+          _images.put(_image, bitmap);
+      }
+      catch (IOException e) { Logs.exn("Cannot load emoji image " + _image, e); }
+    }
+    return bitmap;
+  }
+
   private static final Map<Group, List<Emoji>> _groups = new EnumMap<>(Group.class);
   private static final Map<String, Emoji> _by_text = new HashMap<>();
+  private static final LruCache<String, Bitmap> _images = new LruCache<>(64);
   private static Typeface _font;
 
   public static Typeface typeface(Context context)

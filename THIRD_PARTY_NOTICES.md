@@ -9,6 +9,18 @@ The Unicode License v3 is bundled as `assets/Unicode-Emoji-LICENSE.txt`.
 from [Google's Unicode 18.0 release](https://github.com/googlefonts/noto-emoji/releases/tag/v2026-09-24-unicode18_0).
 The SIL Open Font License 1.1 is bundled as `assets/NotoColorEmoji-LICENSE.txt`.
 
+## Native app emoji previews
+
+The static WebP previews in `assets/native-emoji/` come from the following
+sources. Each accompanying TSV preserves the app's text code or Android local QQ face ID.
+Rights to the artwork and source asset data remain with the respective
+platforms and other rights holders.
+
+- QQ face IDs, names and images come from [QFace's QQNT catalog](https://github.com/koishijs/QFace/tree/f040ba23d94dd43f203ec2da75d6ee78a18b1dc4). The catalog used here includes visible numeric-ID faces of types 0 and 1. The input code uses `U+0014` followed by the Android local face ID. Tencent's Android configuration maps server IDs (`QSid`) to local IDs (`AQLid`). The Android 9.3.85 system-face code uses the server ID for faces without a local override. [Tencent face configuration](https://downv6.qq.com/qqface/res/Config/face_config_202403251616.zip) · [TIM text encoding analysis](https://blog.qsboy.com/tim-reverse/)
+- WeChat uses the newer WeChat set from [emoji-chinese](https://github.com/YiJio/emoji-chinese/tree/79c2292b778cf93cb5850f70c3168bcbfe39aeeb), including its `_map/wxNew.json` mappings.
+- Douyin uses visible, non-time-limited entries from the Android small-emoji catalog in [douyin-emoji](https://github.com/hnlyzxf/douyin-emoji/tree/e1e0395662634c48c4073a6d8fba6138121a53d2), resource revision `1782206497228`.
+- Bilibili uses inline emoji from the 小黄脸, 小电视 and 热词系列一 [comment emoji packs](https://api.bilibili.com/x/emote/package?business=reply&ids=1,2,53) and their Bilibili CDN images.
+
 ## WowType Rust core
 
 `vendor/wowtype-core/` is derived from [Gloridust/WowType](https://github.com/Gloridust/WowType),

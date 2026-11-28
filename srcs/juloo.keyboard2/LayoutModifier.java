@@ -27,6 +27,9 @@ public final class LayoutModifier
    */
   public static KeyboardData modify_layout(KeyboardData kw)
   {
+    boolean password = globalConfig.editor_config.password_editor;
+    // The middle column of the split layout contains word candidates.
+    boolean split = globalConfig.split_layout && !password;
     // Extra keys are removed from the set as they are encountered during the
     // first iteration then automatically added.
     final TreeMap<KeyValue, KeyboardData.PreferredPos> extra_keys = new TreeMap<KeyValue, KeyboardData.PreferredPos>();
@@ -40,15 +43,16 @@ public final class LayoutModifier
     // removing the number keys from the main layout.
     KeyboardData.Row added_number_row = null;
     KeyboardData added_numpad = null;
-    if (globalConfig.show_numpad)
+    if (!password && globalConfig.show_numpad)
     {
       added_numpad = modify_numpad(num_pad, kw);
       remove_keys.addAll(added_numpad.getKeys().keySet());
     }
-    else if (globalConfig.add_number_row && !kw.embedded_number_row) // The numpad removes the number row
+    else if (password || (globalConfig.add_number_row && !kw.embedded_number_row))
     {
-      added_number_row = modify_number_row(globalConfig.number_row_symbols ? number_row_symbols : number_row_no_symbols, kw);
-      if (globalConfig.split_layout)
+      added_number_row = password ? number_row_no_symbols
+        : modify_number_row(globalConfig.number_row_symbols ? number_row_symbols : number_row_no_symbols, kw);
+      if (split)
         added_number_row = LayoutLandscapeModifier.transform_number_row(added_number_row);
       remove_keys.addAll(added_number_row.getKeys(0).keySet());
     }
@@ -56,7 +60,7 @@ public final class LayoutModifier
     if (kw.bottom_row)
       kw = kw.insert_row(bottom_row, kw.rows.size());
     // Split the layout in landscape orientation
-    if (globalConfig.split_layout)
+    if (split)
       kw = LayoutLandscapeModifier.transform_to_landscape(kw);
     // Compose keys to add to the layout
     // 'extra_keys_keyset' reflects changes made to 'extra_keys'
@@ -167,9 +171,9 @@ public final class LayoutModifier
           case ACTION:
             return ec.action_key_replacement;
           case SWITCH_FORWARD:
-            return (globalConfig.layouts.size() > 1) ? orig : null;
+            return (!ec.password_editor && globalConfig.layouts.size() > 1) ? orig : null;
           case SWITCH_BACKWARD:
-            return (globalConfig.layouts.size() > 2) ? orig : null;
+            return (!ec.password_editor && globalConfig.layouts.size() > 2) ? orig : null;
           case SWITCH_VOICE_TYPING:
           case SWITCH_VOICE_TYPING_CHOOSER:
             return globalConfig.shouldOfferVoiceTyping ? orig : null;

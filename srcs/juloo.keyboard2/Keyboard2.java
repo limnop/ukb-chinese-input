@@ -75,6 +75,8 @@ public class Keyboard2 extends InputMethodService
   {
     if (_currentSpecialLayout != null)
       return _currentSpecialLayout;
+    if (_config.editor_config.password_editor)
+      return loadLayout(R.xml.latn_qwerty_us);
     KeyboardData layout = null;
     int layout_i = _config.get_current_layout();
     if (layout_i >= _config.layouts.size())
@@ -319,6 +321,8 @@ public class Keyboard2 extends InputMethodService
     super.onStartInput(info, restarting);
     _physical_shift_down = null;
     _config.editor_config.refresh(info, getResources());
+    if (_emojiPane != null)
+      emojiGrid().setPlatform(nativeEmojiPlatform());
     if (physical_mode_selected())
     {
       // The first physical keystroke can arrive before any IME view is shown.
@@ -336,8 +340,7 @@ public class Keyboard2 extends InputMethodService
   private void prepare_input()
   {
     refresh_config();
-    _currentSpecialLayout = _config.editor_config.password_editor
-      ? loadLayout(R.xml.latn_qwerty_us) : refresh_special_layout();
+    _currentSpecialLayout = refresh_special_layout();
     _keyeventhandler.started(_config);
     apply_current_layout();
   }
@@ -359,11 +362,27 @@ public class Keyboard2 extends InputMethodService
   public void onFinishInput()
   {
     _physical_shift_down = null;
+    if (_emojiPane != null)
+      emojiGrid().setPlatform(null);
     if (physical_input_active())
       _keyeventhandler.cancel_composition();
     if (_floating_candidates != null)
       _floating_candidates.set_state(false, false);
     super.onFinishInput();
+  }
+
+  private EmojiGridView emojiGrid()
+  {
+    return _emojiPane.findViewById(R.id.emoji_grid);
+  }
+
+  private NativeEmoji nativeEmojiPlatform()
+  {
+    EditorInfo editor = getCurrentInputEditorInfo();
+    if (!getCurrentInputStarted() || editor == null || _config.editor_config.password_editor
+        || _config.editor_config.numeric_layout)
+      return null;
+    return NativeEmoji.forPackage(editor.packageName);
   }
 
   private void startClipboardPolling()
@@ -789,8 +808,7 @@ public class Keyboard2 extends InputMethodService
         case SWITCH_EMOJI:
           if (_emojiPane == null)
             _emojiPane = (ViewGroup)inflate_view(R.layout.emoji_pane);
-          else
-            ((EmojiGridView)_emojiPane.findViewById(R.id.emoji_grid)).closeVariants();
+          emojiGrid().open(nativeEmojiPlatform());
           setInputView(_emojiPane);
           break;
 
