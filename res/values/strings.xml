@@ -176,6 +176,7 @@
     <string name="clipboard_sync_uploading">Uploading…</string>
     <string name="clipboard_sync_downloading">Downloading…</string>
     <string name="clipboard_sync_downloaded">Downloaded to the system clipboard</string>
+    <string name="clipboard_sync_copy_failed">%1$s\nCould not copy to the system clipboard</string>
     <string name="clipboard_sync_file_info">%1$s · %2$d bytes\nSaved in Download/UKB-Sync</string>
     <string name="clipboard_sync_open_file">Open file</string>
     <string name="clipboard_split_button">Split</string>

@@ -140,22 +140,22 @@ public final class ClipboardSyncControls extends LinearLayout
         {
           @Override public void complete(ClipboardSyncClient.Result result)
           {
+            boolean copied = true;
             if (result.file != null)
             {
-              ClipboardHistoryService.set_current_clip_uri(getContext(),
+              copied = ClipboardHistoryService.set_current_clip_uri(getContext(),
                   result.file.uri, result.file.name);
-              _status.setText(result.message);
               show_file_preview(result);
             }
             else if (result.text != null)
             {
-              ClipboardHistoryService.set_current_clip_text(getContext(),
+              copied = ClipboardHistoryService.set_current_clip_text(getContext(),
                   result.text);
-              _status.setText(result.message);
               hide_file_preview();
             }
-            else
-              _status.setText(result.message);
+            _status.setText(copied ? result.message
+                : getResources().getString(R.string.clipboard_sync_copy_failed,
+                    result.message));
           }
         });
   }

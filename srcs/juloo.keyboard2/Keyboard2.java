@@ -1,5 +1,7 @@
 package juloo.keyboard2;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -23,9 +25,9 @@ import android.widget.LinearLayout;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import juloo.cdict.Cdict;
 import juloo.keyboard2.staged.WowtypePinyinEngine;
 import juloo.keyboard2.dict.Dictionaries;
@@ -61,10 +63,15 @@ public class Keyboard2 extends InputMethodService
   private boolean _clipboardPollInFlight = false;
   private int _clipboardPollGeneration = 0;
   private boolean _physical_chinese = true;
+  private boolean _physical_emoji_open;
+  private int _input_generation;
+  private String _physical_v_composition;
+  private int _physical_v_cursor;
+  private long _physical_v_key;
   /** Shift pressed by itself, pending release to switch languages. */
   private Long _physical_shift_down;
-  /** Key-up and repeat events belong to whoever handled the initial down. */
-  private final Set<Long> _physical_keys_down = new HashSet<>();
+  /** Consumed key downs, with true for keys that repeat in the composer. */
+  private final Map<Long, Boolean> _physical_keys_down = new HashMap<>();
 
   private Config _config;
 
@@ -189,7 +196,9 @@ public class Keyboard2 extends InputMethodService
 
   @Override
   public void onDestroy() {
+    _input_generation++;
     stopClipboardPolling();
+    close_physical_emoji();
     super.onDestroy();
 
     _foldStateTracker.close();
@@ -282,6 +291,7 @@ public class Keyboard2 extends InputMethodService
     // Refreshing the theme config requires re-creating the views
     if (prev_theme != _config.theme)
     {
+      close_physical_emoji();
       create_keyboard_view();
       _emojiPane = null;
       _clipboard_pane = null;
@@ -319,22 +329,17 @@ public class Keyboard2 extends InputMethodService
   public void onStartInput(EditorInfo info, boolean restarting)
   {
     super.onStartInput(info, restarting);
+    _input_generation++;
+    _physical_v_composition = null;
     _physical_shift_down = null;
+    close_physical_emoji();
     _config.editor_config.refresh(info, getResources());
     if (_emojiPane != null)
       emojiGrid().setPlatform(nativeEmojiPlatform());
+    // Focus changes can start a new session while Android is hiding the IME.
+    // Prepare for physical keystrokes without changing the IME window visibility.
     if (physical_mode_selected())
-    {
-      // The first physical keystroke can arrive before any IME view is shown.
       prepare_input();
-      if (!physical_candidates_enabled() && isInputViewShown())
-        requestHideSelf(0);
-      else if (!restarting && physical_candidates_enabled() && !isInputViewShown())
-        _handler.post(() -> {
-          if (getCurrentInputEditorInfo() == info && physical_candidates_enabled() && !isInputViewShown())
-            requestShowSelf(0);
-        });
-    }
   }
 
   private void prepare_input()
@@ -351,7 +356,7 @@ public class Keyboard2 extends InputMethodService
     if (!physical_mode_selected())
       prepare_input();
     setInputView(_keyboard_container_view);
-    if (_floating_candidates != null)
+    if (physical_input_active() && _floating_candidates != null)
       track_floating_caret(true);
     Logs.debug_startup_input_view(info, _config);
     if (!physical_mode_selected())
@@ -361,7 +366,10 @@ public class Keyboard2 extends InputMethodService
   @Override
   public void onFinishInput()
   {
+    _input_generation++;
+    _physical_v_composition = null;
     _physical_shift_down = null;
+    close_physical_emoji();
     if (_emojiPane != null)
       emojiGrid().setPlatform(null);
     if (physical_input_active())
@@ -371,9 +379,16 @@ public class Keyboard2 extends InputMethodService
     super.onFinishInput();
   }
 
+  private ViewGroup emojiPane()
+  {
+    if (_emojiPane == null)
+      _emojiPane = (ViewGroup)inflate_view(R.layout.emoji_pane);
+    return _emojiPane;
+  }
+
   private EmojiGridView emojiGrid()
   {
-    return _emojiPane.findViewById(R.id.emoji_grid);
+    return emojiPane().findViewById(R.id.emoji_grid);
   }
 
   private NativeEmoji nativeEmojiPlatform()
@@ -459,9 +474,11 @@ public class Keyboard2 extends InputMethodService
     ViewParent parent = v.getParent();
     if (parent != null && parent instanceof ViewGroup)
       ((ViewGroup)parent).removeView(v);
-    if (v == _keyboard_container_view && physical_input_active())
+    if (v == _keyboard_container_view && physical_mode_selected())
     {
       _floating_candidates = new FloatingCandidates(v, this::toggle_physical_language);
+      if (_physical_emoji_open)
+        _floating_candidates.set_popup(emojiPane());
       update_floating_candidates();
       v = _floating_candidates;
     }
@@ -532,10 +549,16 @@ public class Keyboard2 extends InputMethodService
     }
     updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
+    boolean floatingPopup = _physical_emoji_open && _floating_candidates != null;
+    int popupHeight = floatingPopup
+        ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT;
+    updateLayoutHeightOf(inputArea, popupHeight);
+    if (_floating_candidates != null)
+      updateLayoutHeightOf(_floating_candidates, popupHeight);
 
     updateLayoutHeightOf(
             (View) inputArea.getParent(),
-            isFullscreenMode()
+            isFullscreenMode() || floatingPopup
                     ? ViewGroup.LayoutParams.MATCH_PARENT
                     : ViewGroup.LayoutParams.WRAP_CONTENT);
     updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
@@ -596,6 +619,7 @@ public class Keyboard2 extends InputMethodService
   public void onFinishInputView(boolean finishingInput)
   {
     stopClipboardPolling();
+    close_physical_emoji();
     if (_floating_candidates != null)
       track_floating_caret(false);
     if (physical_input_active())
@@ -616,6 +640,8 @@ public class Keyboard2 extends InputMethodService
     apply_current_layout();
     if ("physical_keyboard_behavior".equals(_key))
     {
+      _physical_v_composition = null;
+      close_physical_emoji();
       if (isInputViewShown())
       {
         if (_floating_candidates != null)
@@ -686,6 +712,8 @@ public class Keyboard2 extends InputMethodService
   {
     if (!physical_input_active())
       return;
+    close_physical_emoji();
+    _physical_v_composition = null;
     _physical_chinese = !_physical_chinese;
     apply_current_layout();
     if (_physical_chinese)
@@ -699,6 +727,127 @@ public class Keyboard2 extends InputMethodService
     return ((long)event.getDeviceId() << 32) | (event.getKeyCode() & 0xffffffffL);
   }
 
+  private void open_physical_emoji()
+  {
+    _physical_emoji_open = true;
+    ViewGroup pane = emojiPane();
+    pane.findViewById(R.id.emoji_bottom_row).setVisibility(View.GONE);
+    EmojiGridView grid = emojiGrid();
+    grid.open(nativeEmojiPlatform());
+    grid.setPhysicalPicker(this::close_physical_emoji);
+    if (_floating_candidates != null)
+      _floating_candidates.set_popup(pane);
+    else if (isInputViewShown())
+      setInputView(_keyboard_container_view);
+    updateSoftInputWindowLayoutParams();
+    update_floating_candidates();
+    if (!isInputViewShown())
+      requestShowSelf(0);
+  }
+
+  private void close_physical_emoji()
+  {
+    if (!_physical_emoji_open)
+      return;
+    _physical_emoji_open = false;
+    if (_floating_candidates != null)
+      _floating_candidates.set_popup(null);
+    emojiGrid().setPhysicalPicker(null);
+    _emojiPane.findViewById(R.id.emoji_bottom_row).setVisibility(View.VISIBLE);
+    _emojiPane.setBackground(null);
+    _emojiPane.setClipToOutline(false);
+    _emojiPane.setElevation(0);
+    updateSoftInputWindowLayoutParams();
+    update_floating_candidates();
+  }
+
+  private boolean physical_emoji_key_down(KeyEvent event)
+  {
+    if (event.hasNoModifiers() || event.hasModifiers(KeyEvent.META_SHIFT_ON))
+    {
+      switch (event.getUnicodeChar())
+      {
+        case '-': case '_': emojiGrid().stepPhysicalGroup(-1); return true;
+        case '=': case '+': emojiGrid().stepPhysicalGroup(1); return true;
+      }
+    }
+    if (event.hasNoModifiers())
+    {
+      switch (event.getKeyCode())
+      {
+        case KeyEvent.KEYCODE_DPAD_LEFT: emojiGrid().movePhysicalSelection(-1, 0); return true;
+        case KeyEvent.KEYCODE_DPAD_RIGHT: emojiGrid().movePhysicalSelection(1, 0); return true;
+        case KeyEvent.KEYCODE_DPAD_UP: emojiGrid().movePhysicalSelection(0, -1); return true;
+        case KeyEvent.KEYCODE_DPAD_DOWN: emojiGrid().movePhysicalSelection(0, 1); return true;
+        case KeyEvent.KEYCODE_ENTER:
+        case KeyEvent.KEYCODE_NUMPAD_ENTER:
+        case KeyEvent.KEYCODE_SPACE:
+        case KeyEvent.KEYCODE_DPAD_CENTER:
+          emojiGrid().confirmPhysicalSelection();
+          return true;
+        case KeyEvent.KEYCODE_ESCAPE:
+          close_physical_emoji();
+          return true;
+      }
+    }
+    if (!KeyEvent.isModifierKey(event.getKeyCode()))
+      close_physical_emoji();
+    return false;
+  }
+
+  private void physical_copy()
+  {
+    InputConnection connection = getCurrentInputConnection();
+    if (connection == null || connection.performContextMenuAction(android.R.id.copy))
+      return;
+    CharSequence selected = connection.getSelectedText(0);
+    if (selected != null && selected.length() > 0)
+    {
+      ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+      clipboard.setPrimaryClip(ClipData.newPlainText(null, selected));
+    }
+  }
+
+  private void physical_sync_paste()
+  {
+    InputConnection connection = getCurrentInputConnection();
+    if (connection == null)
+      return;
+    int generation = _input_generation;
+    ClipboardSyncClient.Callback paste = result -> {
+      CharSequence paste_text = null;
+      if (result != null && !result.duplicate)
+      {
+        if (result.file != null)
+          ClipboardHistoryService.set_current_clip_uri(this, result.file.uri, result.file.name);
+        else if (result.text != null)
+        {
+          paste_text = result.text;
+          ClipboardHistoryService.set_current_clip_text(this, result.text);
+        }
+      }
+      if (_input_generation != generation || !physical_input_active()
+          || connection != getCurrentInputConnection())
+        return;
+      _keyeventhandler.finish_composition();
+      if (paste_text == null)
+      {
+        ClipData local = ClipboardHistoryService.get_current_clip_data(this);
+        if (local != null && local.getItemCount() == 1)
+        {
+          ClipData.Item item = local.getItemAt(0);
+          if (item.getText() != null && item.getHtmlText() == null && item.getUri() == null
+              && item.getIntent() == null)
+            paste_text = item.getText();
+        }
+      }
+      if (paste_text == null || !connection.commitText(paste_text, 1))
+        connection.performContextMenuAction(android.R.id.paste);
+    };
+    if (!ClipboardSyncClient.pull_new_if_configured(this, paste))
+      paste.complete(null);
+  }
+
   @Override
   public boolean onKeyDown(int keyCode, KeyEvent event)
   {
@@ -707,9 +856,11 @@ public class Keyboard2 extends InputMethodService
     {
       if (_physical_shift_down != null && _physical_shift_down != id)
         _physical_shift_down = null;
-      if (_physical_keys_down.contains(id))
+      Boolean repeat = _physical_keys_down.get(id);
+      if (repeat != null)
       {
-        if (physical_input_active() && _physical_chinese)
+        _physical_v_composition = null;
+        if (repeat && physical_candidates_enabled() && !_physical_emoji_open)
           _keyeventhandler.physical_key_down(event);
         return true;
       }
@@ -717,6 +868,8 @@ public class Keyboard2 extends InputMethodService
     }
     _physical_shift_down = null;
     _physical_keys_down.remove(id);
+    String previous_v = _physical_v_composition;
+    _physical_v_composition = null;
     InputDevice device = event.getDevice();
     if (physical_input_active() && device != null && !device.isVirtual()
         && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC
@@ -731,11 +884,42 @@ public class Keyboard2 extends InputMethodService
         // Let the editor receive both modifier events so Shift chords still work.
         return super.onKeyDown(keyCode, event);
       }
-      if (!_physical_chinese || !_keyeventhandler.physical_key_down(event))
+      if (!_physical_chinese)
         return super.onKeyDown(keyCode, event);
+      if (_physical_emoji_open && physical_emoji_key_down(event))
+      {
+        _physical_keys_down.put(id, false);
+        return true;
+      }
+      if (event.hasModifiers(KeyEvent.META_SHIFT_ON)
+          && (keyCode == KeyEvent.KEYCODE_C || keyCode == KeyEvent.KEYCODE_V))
+      {
+        if (keyCode == KeyEvent.KEYCODE_C)
+          physical_copy();
+        else
+          physical_sync_paste();
+        _physical_keys_down.put(id, false);
+        return true;
+      }
+      boolean plain_v = event.hasNoModifiers() && event.getUnicodeChar() == 'v';
+      if (plain_v && previous_v != null && _physical_v_key == id
+          && _keyeventhandler.undo_physical_v(previous_v, _physical_v_cursor))
+      {
+        open_physical_emoji();
+        _physical_keys_down.put(id, false);
+        return true;
+      }
+      if (!_keyeventhandler.physical_key_down(event))
+        return super.onKeyDown(keyCode, event);
+      if (plain_v && _keyeventhandler.has_composition())
+      {
+        _physical_v_composition = _keyeventhandler.composing_text();
+        _physical_v_cursor = _keyeventhandler.composing_cursor();
+        _physical_v_key = id;
+      }
       if (_keyeventhandler.has_composition() && !isInputViewShown())
         requestShowSelf(0);
-      _physical_keys_down.add(id);
+      _physical_keys_down.put(id, true);
       return true;
     }
     return super.onKeyDown(keyCode, event);
@@ -750,7 +934,7 @@ public class Keyboard2 extends InputMethodService
     _physical_shift_down = null;
     if (switch_language)
       toggle_physical_language();
-    return _physical_keys_down.remove(id) || super.onKeyUp(keyCode, event);
+    return _physical_keys_down.remove(id) != null || super.onKeyUp(keyCode, event);
   }
 
   public void launch_dictionaries_activity()
@@ -806,8 +990,6 @@ public class Keyboard2 extends InputMethodService
           break;
 
         case SWITCH_EMOJI:
-          if (_emojiPane == null)
-            _emojiPane = (ViewGroup)inflate_view(R.layout.emoji_pane);
           emojiGrid().open(nativeEmojiPlatform());
           setInputView(_emojiPane);
           break;

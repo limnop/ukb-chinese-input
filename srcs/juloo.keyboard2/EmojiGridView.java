@@ -8,10 +8,12 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ImageSpan;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
@@ -31,16 +33,26 @@ public class EmojiGridView extends GridView
   private static final String LAST_USE_PREF = "emoji_last_use";
 
   private final Map<Emoji, Integer> _lastUsed = new HashMap<>();
+  private final Paint _physicalHighlight = new Paint(Paint.ANTI_ALIAS_FLAG);
+  private final Drawable _paneBackground;
   private Emoji.Group _group;
   private Emoji.Group _unicodeGroup;
   private NativeEmoji _platform;
   private boolean _choosingVariants;
   private int _categoryPosition;
+  private Runnable _physicalSelectionCallback;
+  private int _physicalPosition;
 
   public EmojiGridView(Context context, AttributeSet attrs)
   {
     super(context, attrs);
+    _paneBackground = getBackground();
     Emoji.init(context.getResources());
+    TypedValue color = new TypedValue();
+    _physicalHighlight.setColor(context.getTheme().resolveAttribute(
+        R.attr.colorLabelActivated, color, true) ? color.data : 0xff3399ff);
+    _physicalHighlight.setStyle(Paint.Style.STROKE);
+    _physicalHighlight.setStrokeWidth(2 * getResources().getDisplayMetrics().density);
     loadLastUsed();
     setEmojiGroup(_lastUsed.isEmpty() ? Emoji.Group.FACES : Emoji.Group.RECENT);
     setOnItemClickListener((parent, view, position, id) -> view.performClick());
@@ -72,6 +84,7 @@ public class EmojiGridView extends GridView
       entries = Emoji.getEmojisByGroup(group);
     if (group != Emoji.Group.NATIVE)
       _unicodeGroup = group;
+    _physicalPosition = 0;
     setAdapter(new EmojiAdapter(entries, false));
     setSelection(0);
     updateGroupBar();
@@ -98,6 +111,7 @@ public class EmojiGridView extends GridView
   {
     _categoryPosition = getFirstVisiblePosition();
     _choosingVariants = true;
+    _physicalPosition = 0;
     setAdapter(new EmojiAdapter(emoji.variants, true));
     setSelection(0);
     updateGroupBar();
@@ -110,6 +124,84 @@ public class EmojiGridView extends GridView
       return;
     setEmojiGroup(_group);
     setSelection(_categoryPosition);
+    _physicalPosition = _categoryPosition;
+  }
+
+  void setPhysicalPicker(Runnable onSelection)
+  {
+    _physicalSelectionCallback = onSelection;
+    boolean physical = onSelection != null;
+    setBackground(physical ? null : _paneBackground);
+    int height = getResources().getDimensionPixelSize(R.dimen.emoji_grid_height);
+    if (physical)
+    {
+      float density = getResources().getDisplayMetrics().density;
+      height = Math.min(height, Math.round(getResources().getConfiguration().screenHeightDp * density / 2));
+    }
+    ViewGroup.LayoutParams params = getLayoutParams();
+    params.height = height;
+    setLayoutParams(params);
+    if (onSelection != null && getCount() == 0)
+      stepPhysicalGroup(1);
+    if (onSelection != null)
+      showPhysicalSelection(0);
+    else
+      invalidate();
+    updateGroupBar();
+  }
+
+  void stepPhysicalGroup(int direction)
+  {
+    Emoji.Group[] groups = Emoji.Group.values();
+    int index = _group.ordinal();
+    do
+    {
+      index = (index + direction + groups.length) % groups.length;
+    }
+    while ((groups[index] == Emoji.Group.NATIVE && _platform == null)
+        || (groups[index] == Emoji.Group.RECENT && _lastUsed.isEmpty()));
+    setEmojiGroup(groups[index]);
+  }
+
+  void movePhysicalSelection(int horizontal, int vertical)
+  {
+    if (getCount() == 0)
+      return;
+    int columns = Math.max(1, getNumColumns());
+    int position = _physicalPosition + horizontal + vertical * columns;
+    if (vertical > 0 && _physicalPosition / columns == (getCount() - 1) / columns)
+      return;
+    if (position >= 0)
+      showPhysicalSelection(Math.min(position, getCount() - 1));
+  }
+
+  private void showPhysicalSelection(int position)
+  {
+    _physicalPosition = position;
+    if (position < getFirstVisiblePosition() || position > getLastVisiblePosition())
+      setSelection(position);
+    invalidate();
+  }
+
+  @Override
+  protected void dispatchDraw(Canvas canvas)
+  {
+    super.dispatchDraw(canvas);
+    if (_physicalSelectionCallback == null)
+      return;
+    View cell = getChildAt(_physicalPosition - getFirstVisiblePosition());
+    if (cell == null)
+      return;
+    float inset = _physicalHighlight.getStrokeWidth();
+    canvas.drawRoundRect(cell.getLeft() + inset, cell.getTop() + inset,
+        cell.getRight() - inset, cell.getBottom() - inset,
+        2 * inset, 2 * inset, _physicalHighlight);
+  }
+
+  void confirmPhysicalSelection()
+  {
+    if (_physicalPosition < getCount())
+      select((Emoji)getAdapter().getItem(_physicalPosition));
   }
 
   private void updateGroupBar()
@@ -118,7 +210,7 @@ public class EmojiGridView extends GridView
     {
       EmojiGroupButtonsBar bar = ((ViewGroup)getParent()).findViewById(R.id.emoji_group_bar);
       if (bar != null)
-        bar.update(_group, _choosingVariants, _platform);
+        bar.update(_group, _choosingVariants, _platform, _physicalSelectionCallback != null);
     }
   }
 
@@ -132,6 +224,8 @@ public class EmojiGridView extends GridView
       closeVariants();
     }
     Config.globalConfig().handler.key_up(emoji.kv(), Pointers.Modifiers.EMPTY);
+    if (_physicalSelectionCallback != null)
+      _physicalSelectionCallback.run();
   }
 
   private void saveLastUsed()

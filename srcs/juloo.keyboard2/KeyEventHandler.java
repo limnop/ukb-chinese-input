@@ -126,6 +126,16 @@ public final class KeyEventHandler
     send_composition();
   }
 
+  /** Remove the first tap of the physical emoji shortcut if it is still live. */
+  boolean undo_physical_v(String composition, int cursor)
+  {
+    if (cursor != composing_cursor() || !composing_text().equals(composition)
+        || !_composer.backspace())
+      return false;
+    send_composition();
+    return true;
+  }
+
   /** Handle keys owned by physical pinyin input. Unclaimed keys keep their
       original events, including the device's shortcuts and modifier state. */
   boolean physical_key_down(KeyEvent event)
@@ -241,6 +251,8 @@ public final class KeyEventHandler
       case ')': return "）";
       case '<': return "《";
       case '>': return "》";
+      case '{': return "「";
+      case '}': return "」";
       default: return null;
     }
   }

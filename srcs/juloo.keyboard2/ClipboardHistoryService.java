@@ -75,19 +75,17 @@ public final class ClipboardHistoryService
   }
 
   /** Replace Android's system clipboard with remotely downloaded text. */
-  public static void set_current_clip_text(Context ctx, String text)
+  public static boolean set_current_clip_text(Context ctx, String text)
   {
     ClipboardHistoryService service = get_service(ctx);
-    if (service != null)
-      service.set_clip_text(text);
+    return service != null && service.set_clip_text(text);
   }
 
   /** Replace Android's system clipboard with a downloaded file URI. */
-  public static void set_current_clip_uri(Context ctx, Uri uri, String label)
+  public static boolean set_current_clip_uri(Context ctx, Uri uri, String label)
   {
     ClipboardHistoryService service = get_service(ctx);
-    if (service != null)
-      service.set_clip_uri(uri, label);
+    return service != null && service.set_clip_uri(uri, label);
   }
 
   /** The maximum size limits the amount of user data stored in memory but also
@@ -290,24 +288,44 @@ public final class ClipboardHistoryService
     catch (Exception _e) { return null; }
   }
 
-  synchronized void set_clip_text(String text)
+  synchronized boolean set_clip_text(String text)
   {
-    if (text.equals(current_clip_text()))
-    {
-      add_clip(text);
-      return;
-    }
-    _cm.setPrimaryClip(ClipData.newPlainText("SyncClipboard", text));
+    if (!text.equals(current_clip_text())
+        && !write_system_clip(ClipData.newPlainText("SyncClipboard", text)))
+      return false;
     add_clip(text);
+    return true;
   }
 
-  synchronized void set_clip_uri(Uri uri, String label)
+  synchronized boolean set_clip_uri(Uri uri, String label)
   {
     ClipData current = current_clip_data();
     if (current != null && current.getItemCount() > 0
         && uri.equals(current.getItemAt(0).getUri()))
-      return;
-    _cm.setPrimaryClip(ClipData.newUri(_resolver, label, uri));
+      return true;
+    try
+    {
+      return write_system_clip(ClipData.newUri(_resolver, label, uri));
+    }
+    catch (RuntimeException e)
+    {
+      // Resolving the MIME type can fail if the file is no longer accessible.
+      return false;
+    }
+  }
+
+  private boolean write_system_clip(ClipData clip)
+  {
+    try
+    {
+      _cm.setPrimaryClip(clip);
+      return true;
+    }
+    catch (RuntimeException e)
+    {
+      // Clipboard IPC can reject oversized text or an inaccessible URI.
+      return false;
+    }
   }
 
   final class SystemListener implements ClipboardManager.OnPrimaryClipChangedListener

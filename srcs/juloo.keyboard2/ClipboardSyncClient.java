@@ -148,13 +148,29 @@ final class ClipboardSyncClient
   static void pull(Context context, final Callback callback)
   {
     final Context app = context.getApplicationContext();
-    final Account account = new Account(app);
+    pull(app, new Account(app), false, callback);
+  }
+
+  static boolean pull_new_if_configured(Context context, Callback callback)
+  {
+    Context app = context.getApplicationContext();
+    Account account;
+    try { account = new Account(app); }
+    catch (RuntimeException e) { return false; }
+    if (!account.configured())
+      return false;
+    pull(app, account, true, callback);
+    return true;
+  }
+
+  private static void pull(Context app, Account account, boolean only_new, Callback callback)
+  {
     EXECUTOR.execute(new Runnable()
         {
           @Override public void run()
           {
             Result result;
-            try { result = pull_profile(app, account); }
+            try { result = pull_profile(app, account, only_new); }
             catch (Exception e) { result = failure(e); }
             post(callback, result);
           }
@@ -266,13 +282,13 @@ final class ClipboardSyncClient
     finally { temp.delete(); }
   }
 
-  private static Result pull_profile(Context context, Account account)
+  private static Result pull_profile(Context context, Account account, boolean only_new)
       throws Exception
   {
     JSONObject profile = get_profile(account);
     String type = profile.optString("type", "");
     if ("Text".equals(type))
-      return pull_text(account, profile);
+      return pull_text(account, profile, only_new);
     if (!"File".equals(type) && !"Image".equals(type) && !"Group".equals(type))
       throw new Exception("远端剪贴板类型暂不支持：" + type);
     if (!profile.optBoolean("hasData", false))
@@ -293,6 +309,8 @@ final class ClipboardSyncClient
     if (announced_hash.length() > 0
         && has_hash(account, PREF_DOWN_FILE_HASHES, announced_hash))
     {
+      if (only_new)
+        return result("文件已同步，未重复下载", null, null, null, null, true);
       SavedFile existing = ClipboardDownloadStore.find(context, data_name,
           announced_hash);
       if (existing != null)
@@ -345,18 +363,23 @@ final class ClipboardSyncClient
       SavedFile saved = ClipboardDownloadStore.save(context, temp, data_name,
           mime, transfer_hash);
       remember_hash(account, PREF_DOWN_FILE_HASHES, transfer_hash);
-      Bitmap image = mime.startsWith("image/")
+      Bitmap image = !only_new && mime.startsWith("image/")
           ? decode_preview(context, saved.uri) : null;
-      String preview = is_text_file(data_name, mime)
+      String preview = !only_new && is_text_file(data_name, mime)
           ? read_text_preview(context, saved.uri) : null;
       return result("文件已下载：" + data_name, null, saved, image, preview, false);
     }
     finally { temp.delete(); }
   }
 
-  private static Result pull_text(Account account, JSONObject profile)
+  private static Result pull_text(Account account, JSONObject profile, boolean only_new)
       throws Exception
   {
+    String expected = profile.optString("hash", "");
+    if (only_new && !expected.isEmpty()
+        && (has_hash(account, PREF_DOWN_TEXT_HASHES, expected)
+            || has_hash(account, PREF_UP_TEXT_HASHES, expected)))
+      return result("文本已同步，未重复写入", null, null, null, null, true);
     String text;
     if (profile.optBoolean("hasData", false))
     {
@@ -381,7 +404,6 @@ final class ClipboardSyncClient
       text = profile.optString("text", "");
 
     String hash = sha256(text.getBytes(StandardCharsets.UTF_8));
-    String expected = profile.optString("hash", "");
     if (expected.length() > 0 && !expected.equalsIgnoreCase(hash))
       throw new Exception("远端文本校验失败");
     if (has_hash(account, PREF_DOWN_TEXT_HASHES, hash)

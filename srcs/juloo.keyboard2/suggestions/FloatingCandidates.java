@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build.VERSION;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.inputmethod.CursorAnchorInfo;
 import android.widget.FrameLayout;
@@ -18,6 +19,7 @@ public final class FloatingCandidates extends FrameLayout
   private final View _card;
   private final View _composing;
   private final TextView _badge;
+  private View _popup;
   private final Drawable _card_background;
   private final Drawable _composing_background;
   private final int _gap;
@@ -59,7 +61,7 @@ public final class FloatingCandidates extends FrameLayout
       {
         android.graphics.Insets bars = insets.getInsets(
             WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-        setPadding(bars.left, 0, bars.right, bars.bottom);
+        setPadding(bars.left, bars.top, bars.right, bars.bottom);
       }
       return insets;
     });
@@ -75,12 +77,43 @@ public final class FloatingCandidates extends FrameLayout
 
   public void set_state(boolean chinese, boolean composing)
   {
-    boolean show_card = chinese && composing;
+    boolean show_card = chinese && composing && _popup == null;
     // Keep the row measured while idle so a digit can select immediately.
     _card.setVisibility(show_card ? View.VISIBLE : View.INVISIBLE);
-    _badge.setVisibility(chinese && !composing ? View.VISIBLE : View.GONE);
-    if (show_card)
-      place_card();
+    _badge.setVisibility(chinese && !composing && _popup == null ? View.VISIBLE : View.GONE);
+    place_card();
+  }
+
+  public void set_popup(View popup)
+  {
+    if (_popup == popup)
+      return;
+    if (_popup != null)
+      removeView(_popup);
+    _popup = popup;
+    if (popup != null)
+    {
+      LayoutParams params = new LayoutParams(LayoutParams.WRAP_CONTENT,
+          LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+      popup.setBackgroundResource(R.drawable.floating_candidates_background);
+      popup.getBackground().mutate().setAlpha(216);
+      popup.setClipToOutline(true);
+      popup.setElevation(dp(10));
+      if (popup.getParent() instanceof ViewGroup)
+        ((ViewGroup)popup.getParent()).removeView(popup);
+      addView(popup, params);
+    }
+  }
+
+  @Override
+  protected void onMeasure(int widthSpec, int heightSpec)
+  {
+    if (_popup != null)
+    {
+      int width = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+      _popup.getLayoutParams().width = Math.max(0, Math.min(dp(480), width - 2 * dp(24)));
+    }
+    super.onMeasure(widthSpec, heightSpec);
   }
 
   public void set_cursor_anchor(CursorAnchorInfo info)
@@ -121,7 +154,8 @@ public final class FloatingCandidates extends FrameLayout
 
   public void set_touchable_region(Region region)
   {
-    View visible = _card.getVisibility() == View.VISIBLE ? _card : _badge;
+    View visible = _popup != null ? _popup
+        : (_card.getVisibility() == View.VISIBLE ? _card : _badge);
     if (visible.getVisibility() != View.VISIBLE)
     {
       region.setEmpty();
@@ -134,6 +168,7 @@ public final class FloatingCandidates extends FrameLayout
 
   public void detach_card()
   {
+    set_popup(null);
     removeView(_card);
     _card_background.setAlpha(_card.getBackground().getAlpha());
     _card.setBackground(_card_background);

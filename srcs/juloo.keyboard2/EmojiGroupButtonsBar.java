@@ -1,6 +1,8 @@
 package juloo.keyboard2;
 
 import android.content.Context;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.ContextThemeWrapper;
 import android.view.ViewGroup;
@@ -8,6 +10,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 public class EmojiGroupButtonsBar extends LinearLayout
@@ -18,11 +21,14 @@ public class EmojiGroupButtonsBar extends LinearLayout
       Emoji.Group.ACTIVITIES, Emoji.Group.OBJECTS, Emoji.Group.SYMBOLS, Emoji.Group.FLAGS };
 
   private final Map<Emoji.Group, Button> _buttons = new EnumMap<>(Emoji.Group.class);
+  private final Map<Button, Drawable> _touchBackgrounds = new HashMap<>();
   private final LinearLayout _groups;
   private final Button _native;
   private final Button _more;
+  private final Typeface _moreTypeface;
   private final Button _back;
   private PopupMenu _moreMenu;
+  private boolean _physicalStyle;
 
   public EmojiGroupButtonsBar(Context context, AttributeSet attrs)
   {
@@ -46,6 +52,7 @@ public class EmojiGroupButtonsBar extends LinearLayout
     }
 
     _more = makeButton(context, context.getString(R.string.emoji_group_more));
+    _moreTypeface = _more.getTypeface();
     _more.setTextSize(13);
     _more.setOnClickListener(v -> showMore());
     _groups.addView(_more, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1.25f));
@@ -60,6 +67,7 @@ public class EmojiGroupButtonsBar extends LinearLayout
   {
     Button button = new Button(new ContextThemeWrapper(context, R.style.emojiTypeButton), null, 0);
     button.setText(label);
+    _touchBackgrounds.put(button, button.getBackground());
     return button;
   }
 
@@ -94,8 +102,21 @@ public class EmojiGroupButtonsBar extends LinearLayout
     button.setAlpha(selected ? 1f : 0.72f);
   }
 
-  void update(Emoji.Group group, boolean choosingVariants, NativeEmoji platform)
+  void update(Emoji.Group group, boolean choosingVariants, NativeEmoji platform, boolean physical)
   {
+    if (_physicalStyle != physical)
+    {
+      _physicalStyle = physical;
+      for (Map.Entry<Button, Drawable> entry : _touchBackgrounds.entrySet())
+      {
+        Button button = entry.getKey();
+        if (physical)
+          button.setBackgroundResource(R.drawable.emoji_physical_category_background);
+        else
+          button.setBackground(entry.getValue());
+        button.setPadding(0, 0, 0, 0);
+      }
+    }
     if (_moreMenu != null)
       _moreMenu.dismiss();
     _groups.setVisibility(choosingVariants ? GONE : VISIBLE);
@@ -106,6 +127,8 @@ public class EmojiGroupButtonsBar extends LinearLayout
     select(_native, group == Emoji.Group.NATIVE);
     boolean moreSelected = group != Emoji.Group.NATIVE && !_buttons.containsKey(group);
     select(_more, moreSelected);
+    _more.setText(physical && moreSelected ? group.icon : getResources().getString(R.string.emoji_group_more));
+    _more.setTypeface(physical && moreSelected ? Emoji.typeface(getContext()) : _moreTypeface);
     _more.setContentDescription(moreSelected ? getResources().getString(
         R.string.emoji_group_more_selected, getResources().getString(group.label)) : null);
     for (Map.Entry<Emoji.Group, Button> entry : _buttons.entrySet())

@@ -141,6 +141,7 @@
     <string name="clipboard_sync_uploading">正在上传…</string>
     <string name="clipboard_sync_downloading">正在下载…</string>
     <string name="clipboard_sync_downloaded">已下载到系统剪贴板</string>
+    <string name="clipboard_sync_copy_failed">%1$s\n无法复制到系统剪贴板</string>
     <string name="clipboard_sync_file_info">%1$s · %2$d 字节\n保存在 Download/UKB-Sync</string>
     <string name="clipboard_sync_open_file">打开文件</string>
     <string name="clipboard_split_button">分段</string>

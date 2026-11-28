@@ -8,6 +8,8 @@
 
 从 [GitHub 发行版](https://github.com/limnop/ukb-chinese-input/releases/latest) 下载 APK，支持 Android 5.0 及以上系统。
 
+[查看 2.4.0 更新说明](doc/releases/v2.4.0.md)
+
 | 安装包 | 用途 | Android 包名 |
 | --- | --- | --- |
 | `*-release.apk` | 日常使用，可覆盖安装同签名的旧版 | `juloo.keyboard2` |
@@ -23,7 +25,7 @@
 - 在拼音布局上，从 `x` 向左上滑输入 `「`，向右下滑输入 `」`；点按仍输入 `x`。
 - 拼音和注音布局在分体键盘上也保留候选栏。退格优先编辑当前拼音，拼音清空后可继续删除已上屏的文字。
 - 内置中文词库；不同词库的数据来源说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
-- 剪贴板默认持久保存最近 70 条文本；软键盘打开时自动轮询远端更新。可手动通过 SyncClipboard 服务器上传和下载文本、图片及文件，并预览结果。重复下载时会复用仍保存在下载目录中的同一文件。密码框和实体键盘模式下暂停自动轮询。
+- 剪贴板默认持久保存最近 70 条文本。软键盘打开时自动轮询远端更新，密码框和实体键盘模式下暂停自动轮询。剪贴板面板支持通过 SyncClipboard 手动上传、下载和预览文本、图片及文件。重复下载时会复用已保存的文件，写入系统剪贴板失败时会显示提示。
 - 同步功能为可选项，需要在 UKB 应用设置中配置服务器。只有键盘打开后才会轮询，其他网络请求由用户手动触发。连接使用 HTTPS 和系统信任的证书。自签名服务器可在「SyncClipboard 设置」中填写可信服务器证书的 SHA-256 指纹，例如使用 `openssl x509 -in server.pem -noout -fingerprint -sha256` 获取等号后的值。
 
 ### Emoji 面板
@@ -63,8 +65,14 @@
 | ↑ / ↓ 或 Page Up / Page Down | 候选翻页 |
 | ← / →、Backspace、Delete | 编辑输入中的拼音 |
 | Esc / Enter | 取消当前拼音 / 上屏原始拼音 |
+| Shift + C | 复制选中的内容 |
+| Shift + V | 粘贴剪贴板。已配置 SyncClipboard 时先检查远端，有新内容就下载后粘贴。远端已同步或连接失败时使用本地剪贴板 |
+| `{` / `}` | 分别输入 `「` 和 `」` |
+| 连按两次 `v` | 打开居中的半透明表情选择器 |
+| `-` / `_` 和 `=` / `+` | 在表情选择器中切到上一个或下一个分类 |
+| 方向键、Enter / 空格、Esc | 在表情选择器中移动选中项、确认输入或关闭 |
 
-中文模式自动转换逗号、句号等常用标点，U 拆字和 V 计算也可直接从实体键盘输入。密码、数字等非普通文本字段直接接收按键。
+表情选择器分别给当前分类和选中的表情描边。应用内容可透过面板背景看到，面板外仍可操作原应用。中文模式自动转换逗号、句号等常用标点，U 拆字和 V 计算也可直接从实体键盘输入。密码、数字等非普通文本字段直接接收按键。
 
 #### 通过 scrcpy 使用电脑键盘
 
@@ -89,7 +97,7 @@ scrcpy --keyboard=uhid
 
 拼音已完全切换到 [WowType](https://github.com/Gloridust/WowType)，不再回退到旧 Java 拼音引擎。当前随包数据约含 93 万条词条/读音记录，每次最多返回 1000 个候选，支持扩展区汉字。拼音纠错默认开启，模糊音默认关闭，可在设置中调整。启动时会校验词库与模型，发现数据损坏时从 APK 恢复。覆盖安装和修复数据均保留本地学习历史。
 
-2.3.2 的 Debug 和 Release 各通过 64 项 JVM 测试。模拟器验证了通用 Emoji 字形和变体、四个平台的原生表情分类和短码提交，以及文本密码框的数字行、底栏和符号页返回。原生表情短码使用模拟输入框验证。拼音的候选、整句、纠错、部分选词、退格、数据更新及精确匹配的验证结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。载入完整拼音数据后，进程在 x86_64 模拟器中的 PSS 约为 458 MiB。整体输入质量仍待与上游做系统对比，内存、首次加载和分段组词学习仍有优化空间。
+2.4.0 的模拟器验证覆盖实体键盘的复制、粘贴、角引号和悬浮表情选择，以及远端文本下载和本地剪贴板回退。此前还验证了通用 Emoji 字形和变体、四个平台在测试输入框中的原生表情分类和短码提交，以及文本密码键盘。拼音的候选、整句、纠错、部分选词、退格、数据更新及精确匹配的验证结果见[移植与验证报告](doc/WOWTYPE_PORTING_REPORT.md)。载入完整拼音数据后，进程在 x86_64 模拟器中的 PSS 约为 458 MiB。整体输入质量仍待与上游做系统对比，内存、首次加载和分段组词学习仍有优化空间。
 
 构建需要 Android SDK/NDK、Java、Python 3 和 Rust stable（rustup）。首次构建会下载固定版本的雾凇词库和语言模型，并校验模型 SHA-256；后续复用本地缓存。运行 `./gradlew assembleRelease` 构建发行版，签名配置及测试步骤见 [CONTRIBUTING.md](CONTRIBUTING.md#building-the-wowtype-pinyin-engine)。
 
@@ -107,6 +115,8 @@ This is a fork of [Unexpected Keyboard](https://github.com/bqv/Unexpected-Keyboa
 
 Get the release or debug APK from [GitHub Releases](https://github.com/limnop/ukb-chinese-input/releases/latest). The keyboard supports Android 5.0 and later. Use the release APK for daily typing. The debug APK has a separate Android application ID and can be installed alongside it. Open the app to enable and select the keyboard, then add a Pinyin or Zhuyin layout in settings.
 
+[Read the 2.4.0 release notes](doc/releases/v2.4.0.md).
+
 ### Features in this fork
 
 - Browse themes by category under Settings → Style → Theme. The three added themes are Phosphor Terminal, Graphite Minimal, and Frosted Acrylic. The acrylic theme uses translucent layers. [See the theme screenshots](doc/keyboard-themes.png).
@@ -115,7 +125,7 @@ Get the release or debug APK from [GitHub Releases](https://github.com/limnop/uk
 - On the pinyin layout, swipe up-left from `x` for `「` and down-right for `」`. Tap the key for `x`.
 - Split layouts keep the candidate bar for pinyin and Zhuyin. Backspace edits the pinyin composition before deleting committed text.
 - A bundled Chinese word dictionary. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the separate dictionary sources.
-- Clipboard history persistently keeps the latest 70 text entries by default. The on-screen keyboard polls the configured SyncClipboard server for remote updates while open. You can manually upload and download text, images, and files and preview the results. Repeated downloads reuse the same file while it remains in the downloads folder. Polling pauses in password fields and physical keyboard mode.
+- Clipboard history keeps the latest 70 text entries by default. The on-screen keyboard polls the configured SyncClipboard server while open. Polling pauses in password fields and physical keyboard mode. The clipboard panel supports manual uploads, downloads, and previews of text, images, and files. It reuses files that are already saved and reports failures to write to the system clipboard.
 - Sync is optional and must be configured in the UKB app settings. Polling runs only while the keyboard is open; other network requests are user-triggered. Connections use HTTPS and the system trust store. For a self-signed server, enter the SHA-256 fingerprint from a trusted copy of the server certificate in SyncClipboard settings.
 
 ### Emoji panel
@@ -151,8 +161,14 @@ The bar floats over the editor without resizing it. When the editor reports a ca
 | Up / Down or Page Up / Page Down | Page through candidates |
 | Left / Right, Backspace, Delete | Edit the composition |
 | Esc / Enter | Cancel the composition / commit the raw pinyin |
+| Shift + C | Copy the selection |
+| Shift + V | Paste the clipboard. When SyncClipboard is configured, check for and download new remote content first. Use the local clipboard if the remote content is already synced or the check fails |
+| `{` / `}` | Type 「 and 」 |
+| Press `v` twice in a row | Open the centered, translucent emoji picker |
+| `-` / `_` and `=` / `+` | Move to the previous or next emoji category |
+| Arrow keys, Enter / Space, Esc | Move the emoji selection, insert it, or dismiss the picker |
 
-Chinese mode converts common punctuation and supports U component lookup and V calculations. Password and numeric fields receive keys directly.
+The picker outlines the active category and the selected emoji separately. The app is visible through the panel and remains interactive outside it. Chinese mode converts common punctuation and supports U component lookup and V calculations. Password and numeric fields receive keys directly.
 
 #### Using scrcpy
 
@@ -176,7 +192,7 @@ Neither mode trains the pinyin dictionary. The `v` in ordinary pinyin such as
 
 Pinyin now uses [WowType](https://github.com/Gloridust/WowType) exclusively, with no fallback to the former Java decoder. Bundled data contains approximately 930,000 word/reading entries, with up to 1,000 candidates per query and support for supplementary Han characters. Typo correction defaults to on and fuzzy pinyin to off; both are configurable. Startup verifies the extracted dictionary and model, restores damaged files from the APK, and preserves local learning history.
 
-The 2.3.2 Debug and Release variants each pass 64 JVM tests. Emulator checks cover Unicode emoji rendering and variants, native emoji categories and code insertion in test editors for all four apps, and the digit row, bottom row and return from the symbol layout in text password fields. The [porting and validation report](doc/WOWTYPE_PORTING_REPORT.md) covers pinyin candidates, sentences, typo correction, partial selection, backspace, data upgrades and exact matches. With the full pinyin data loaded, process PSS was about 458 MiB on the x86_64 emulator. A systematic comparison with upstream is pending. Memory use, initial loading and learning phrases across partial selections still need work.
+Emulator checks for 2.4.0 cover physical-keyboard copy, paste, corner quotes, and the floating emoji picker, including remote text downloads and local clipboard fallback. Earlier checks covered Unicode emoji rendering and variants, native emoji categories and code insertion in test editors for all four apps, and the text password keyboard. The [porting and validation report](doc/WOWTYPE_PORTING_REPORT.md) covers pinyin candidates, sentences, typo correction, partial selection, backspace, data upgrades and exact matches. With the full pinyin data loaded, process PSS was about 458 MiB on the x86_64 emulator. A systematic comparison with upstream is pending. Memory use, initial loading and learning phrases across partial selections still need work.
 
 Builds require the Android SDK/NDK, Java, Python 3 and stable Rust via rustup. The first build downloads pinned dictionary/model inputs and verifies the model SHA-256; later builds reuse the local cache. Run `./gradlew assembleRelease` for a release build. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-wowtype-pinyin-engine) for signing and test instructions.
 
